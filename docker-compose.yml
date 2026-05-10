@@ -168,6 +168,48 @@ services:
       clickhouse:        { condition: service_healthy }
 
   # ---------------------------------------------------------------------------
+  # Core Service (Kotlin/Ktor) — бизнес-логика, ордера, портфели.
+  # docs/architecture/03-components.md §3.2, .claude/tasks/TASK-004-*
+  # ---------------------------------------------------------------------------
+  core-service:
+    build:
+      context: ./core-service
+      dockerfile: Dockerfile
+    container_name: stockyard-core-service
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:       { cpus: '2.0', memory: 1G }
+        reservations: { cpus: '1.0', memory: 512M }
+    environment:
+      CORE_PORT: "8080"
+      PG_HOST: postgres
+      PG_DB: ${PG_DB}
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      REDIS_URL: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      CH_HOST: clickhouse
+      CH_USER: ${CH_USER}
+      CH_PASSWORD: ${CH_PASSWORD}
+      ARGON2_PEPPER: ${ARGON2_PEPPER}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: core-service
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-dev}
+    ports:
+      - "8081:8080"        # хосту 8081 чтобы не путать с gateway:8080
+    networks: [stockyard]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+      start_period: 60s    # Flyway-миграция на cold start
+
+  # ---------------------------------------------------------------------------
   # API Gateway (Kotlin/Ktor) — единая публичная точка входа.
   # docs/architecture/03-components.md §3.1, .claude/tasks/TASK-003-*
   # ---------------------------------------------------------------------------
