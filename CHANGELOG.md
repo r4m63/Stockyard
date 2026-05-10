@@ -19,6 +19,13 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+- Core Service (Kotlin/Ktor) — internal HTTP сервис на `:8080` (host `:8081`):
+  - `GET /health/live` всегда `200 {"status":"UP"}`.
+  - `GET /health/ready` проверяет PostgreSQL (`SELECT 1`) и Redis (`PING`) как блокирующие; ClickHouse info-only (DOWN не делает unhealthy).
+  - `GET /metrics` — Prometheus exposition: JVM memory/GC/threads, processor, HikariCP pool, Ktor HTTP RED-метрики.
+  - 7 internal stub-эндпоинтов (`POST /internal/{users,auth,orders}`, `GET /internal/users/{id}/{orders,portfolio}`, `GET /internal/instruments`, `GET /internal/quotes/{ticker}/history`) возвращают `501 NOT_IMPLEMENTED` в едином формате `{"error":{"code","message","details"}}`. Полная реализация — TASK-005..008. (TASK-004)
+- Programmatic Flyway-bootstrap: миграции V1–V7 применяются в `Application.module()` до открытия HTTP-сокета; падение миграции → fail-fast старт. (TASK-004)
+- Connection pools для PostgreSQL (HikariCP, 50 соединений, `statement_timeout=3s`, `application_name=core-service` через `connectionInitSql`), Redis (Lettuce + `GenericObjectPool` maxTotal=32, выделенный pub/sub connection), ClickHouse (HikariCP, 8 соединений, готов для TASK-008 SELECT свечей). (TASK-004)
 
 ### Changed
 
