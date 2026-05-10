@@ -5,7 +5,6 @@ import com.stockyard.gateway.test.installTestModule
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.ktor.client.request.get
-import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
@@ -17,11 +16,12 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.junit.jupiter.Testcontainers
 
 /**
- * Проверяет, что оставшиеся stub-эндпоинты (`/v1/orders`, `/v1/portfolio`,
- * `/v1/instruments`, `/v1/quotes/*`) ещё возвращают 501 NOT_IMPLEMENTED.
+ * Проверяет, что оставшиеся stub-эндпоинты (`/v1/portfolio`, `/v1/instruments`,
+ * `/v1/quotes/*`) ещё возвращают 501 NOT_IMPLEMENTED.
  *
  * `/v1/auth/{register,login,refresh}` стали реальными в TASK-005 — их IT в
- * [com.stockyard.gateway.routing.AuthRoutesIT].
+ * [com.stockyard.gateway.routing.AuthRoutesIT]. `/v1/orders` (POST + GET) стали
+ * реальными в TASK-006 — их IT в [com.stockyard.gateway.routing.OrdersRoutesIT].
  */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -37,20 +37,6 @@ class StubRoutesIT {
         code shouldBe HttpStatusCode.NotImplemented
         body shouldContain "\"error\""
         body shouldContain "\"code\":\"NOT_IMPLEMENTED\""
-    }
-
-    @Test
-    fun `POST v1 orders returns 501`() = testApplication {
-        installTestModule(redisUrl = redisUrl)
-        val resp = client.post("/v1/orders")
-        assertNotImplemented(resp.bodyAsText(), resp.status)
-    }
-
-    @Test
-    fun `GET v1 orders returns 501`() = testApplication {
-        installTestModule(redisUrl = redisUrl)
-        val resp = client.get("/v1/orders")
-        assertNotImplemented(resp.bodyAsText(), resp.status)
     }
 
     @Test

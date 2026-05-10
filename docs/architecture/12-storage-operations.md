@@ -180,6 +180,10 @@ Volume 20 GB — десятикратный запас от объёма год�
 
 ## 12.2. Redis / KeyDB — operations
 
+### 12.2.0. DevPriceFixture (временный writer `quotes:*` до TASK-008)
+
+До реализации Quotes Service (TASK-008) единственный writer `quotes:{ticker}` HASH — это `DevPriceFixture` в Core Service. Он стартует в `Application.module()` если `STOCKYARD_DEV_FIXTURE=true` (default `true` в dev), читает 50 тикеров из `instruments` и каждые 5 секунд делает random walk ±0.5% по bid/ask/last с записью через `HSET`. В prod-like окружении выключается через `STOCKYARD_DEV_FIXTURE=false`. Удаляется одним коммитом после TASK-008.
+
 ### 12.2.1. Один или два инстанса
 
 В `06-data §6.3.4` упомянуто «для production-like — отдельный инстанс под Pub/Sub без eviction». **Решение для MVP: один инстанс**:

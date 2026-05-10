@@ -7,6 +7,7 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -15,6 +16,11 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 /**
  * HTTP-клиент к Core Service.
@@ -79,6 +85,81 @@ class CoreServiceClient(private val cfg: CoreServiceConfig) : AutoCloseable {
         return if (body.passwordValid) body.userId else null
     }
 
+    /**
+     * POST /internal/orders — размещение ордера в core.
+     * Sealed [PlaceOrderResult]: бизнес-исходы (Created/Rejected*/InvalidTicker/…/Idempotency)
+     * через типы, инфраструктурные ошибки (5xx/timeouts) — через [CoreServiceException].
+     */
+    suspend fun placeOrder(
+        userId: String,
+        ticker: String,
+        side: String,
+        qty: Int,
+        idempotencyKey: String,
+    ): PlaceOrderResult {
+        val resp = http.post("${cfg.baseUrl}/internal/orders") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                InternalPlaceOrderRequest(
+                    userId = userId, ticker = ticker, side = side, qty = qty,
+                    idempotencyKey = idempotencyKey,
+                ),
+            )
+        }
+        return when (resp.status.value) {
+            201 -> PlaceOrderResult.Created(resp.body<InternalOrderDto>())
+            200 -> PlaceOrderResult.Created(resp.body<InternalOrderDto>())  // повтор идемпотентности
+            409 -> {
+                val code = readErrorCode(resp.body<JsonElement>())
+                if (code == "IDEMPOTENCY_CONFLICT") PlaceOrderResult.IdempotencyConflict
+                else throw CoreServiceException("placeOrder unexpected 409: $code")
+            }
+            422 -> {
+                val body = resp.body<JsonElement>()
+                val code = readErrorCode(body) ?: "INVALID_REQUEST"
+                val details = (body.jsonObject["error"] as? JsonObject)?.get("details") as? JsonObject
+                when (code) {
+                    "INSUFFICIENT_FUNDS" -> PlaceOrderResult.InsufficientFunds(
+                        requiredCents = details?.get("requiredCents")?.jsonPrimitive?.longOrNull ?: 0L,
+                        availableCents = details?.get("availableCents")?.jsonPrimitive?.longOrNull ?: 0L,
+                    )
+                    "INSUFFICIENT_POSITION" -> PlaceOrderResult.InsufficientPosition(
+                        requiredQty = details?.get("requiredQty")?.jsonPrimitive?.longOrNull?.toInt() ?: 0,
+                        availableQty = details?.get("availableQty")?.jsonPrimitive?.longOrNull?.toInt() ?: 0,
+                    )
+                    "INVALID_TICKER" -> PlaceOrderResult.InvalidTicker(ticker)
+                    "INVALID_QUANTITY" -> PlaceOrderResult.InvalidQuantity(qty)
+                    "NO_QUOTE_AVAILABLE" -> PlaceOrderResult.NoQuoteAvailable(ticker)
+                    else -> PlaceOrderResult.Validation(code, "validation failed")
+                }
+            }
+            else -> throw CoreServiceException("placeOrder failed: HTTP ${resp.status.value}")
+        }
+    }
+
+    /**
+     * GET /internal/users/{userId}/orders — listing с keyset-пагинацией.
+     */
+    suspend fun listOrders(
+        userId: String,
+        statusFilter: String?,
+        limit: Int,
+        cursor: String?,
+    ): InternalListOrdersResponse {
+        val resp = http.get("${cfg.baseUrl}/internal/users/$userId/orders") {
+            if (statusFilter != null) parameter("status", statusFilter)
+            parameter("limit", limit.toString())
+            if (cursor != null) parameter("cursor", cursor)
+        }
+        if (resp.status.value !in 200..299) {
+            throw CoreServiceException("listOrders failed: HTTP ${resp.status.value}")
+        }
+        return resp.body()
+    }
+
+    private fun readErrorCode(body: JsonElement): String? =
+        runCatching { body.jsonObject["error"]?.jsonObject?.get("code")?.jsonPrimitive?.content }.getOrNull()
+
     override fun close() = http.close()
 }
 
@@ -87,6 +168,18 @@ sealed interface CreateUserResult {
     data class Created(val userId: String) : CreateUserResult
     data object EmailTaken : CreateUserResult
     data class Validation(val code: String, val message: String) : CreateUserResult
+}
+
+/** Результат placeOrder. */
+sealed interface PlaceOrderResult {
+    data class Created(val order: InternalOrderDto) : PlaceOrderResult
+    data object IdempotencyConflict : PlaceOrderResult
+    data class InsufficientFunds(val requiredCents: Long, val availableCents: Long) : PlaceOrderResult
+    data class InsufficientPosition(val requiredQty: Int, val availableQty: Int) : PlaceOrderResult
+    data class InvalidTicker(val ticker: String) : PlaceOrderResult
+    data class InvalidQuantity(val qty: Int) : PlaceOrderResult
+    data class NoQuoteAvailable(val ticker: String) : PlaceOrderResult
+    data class Validation(val code: String, val message: String) : PlaceOrderResult
 }
 
 /** Бросается при неожиданном HTTP-статусе от core (5xx, network failure). */
@@ -109,3 +202,30 @@ private data class InternalApiErrorEnvelope(val error: InternalApiError)
 
 @Serializable
 private data class InternalApiError(val code: String, val message: String)
+
+@Serializable
+private data class InternalPlaceOrderRequest(
+    val userId: String,
+    val ticker: String,
+    val side: String,
+    val qty: Int,
+    val idempotencyKey: String,
+)
+
+@Serializable
+data class InternalOrderDto(
+    val orderId: String,
+    val status: String,
+    val ticker: String,
+    val side: String,
+    val qty: Int,
+    val priceCents: Long? = null,
+    val createdAt: String,
+    val executedAt: String? = null,
+)
+
+@Serializable
+data class InternalListOrdersResponse(
+    val items: List<InternalOrderDto>,
+    val nextCursor: String? = null,
+)

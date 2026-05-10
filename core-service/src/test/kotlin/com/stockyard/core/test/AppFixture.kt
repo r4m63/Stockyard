@@ -23,6 +23,8 @@ fun ApplicationTestBuilder.installTestModule(
     chUser: String = "stockyard",
     chPassword: String = "stockyard",
     argon2Pepper: String = "this-is-a-test-pepper-32-bytes-min-length",
+    devFixtureEnabled: Boolean = false,        // отключаем фоновую корутину для IT — сеют цены вручную
+    devFixtureIntervalSec: Long = 5,
 ) {
     environment {
         config = MapApplicationConfig(
@@ -41,6 +43,9 @@ fun ApplicationTestBuilder.installTestModule(
             "stockyard.argon2.pepper"     to argon2Pepper,
             "stockyard.otel.serviceName"  to "core-service-test",
             "stockyard.otel.otlpEndpoint" to "http://localhost:14317",
+            "stockyard.devFixture.enabled"        to devFixtureEnabled.toString(),
+            "stockyard.devFixture.intervalSec"    to devFixtureIntervalSec.toString(),
+            "stockyard.devFixture.jitterPercent"  to "0.5",
         )
     }
     application { module() }
