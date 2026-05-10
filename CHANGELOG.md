@@ -19,6 +19,22 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+---
+
+## [0.4.0] - 2026-05-11
+
+### Added
 - `POST /v1/auth/register` — регистрация пользователя по email + паролю: Argon2id-хэш с pepper, выдача access (TTL 15 мин) + refresh (TTL 30 дней) JWT-токенов, автоматическое создание RUB-счёта с начальным депозитом 1 000 000,00 ₽. (TASK-005)
 - `POST /v1/auth/login` — вход по email + паролю; generic `401 INVALID_CREDENTIALS` (не различает «email не найден» от «неверный пароль») для защиты от user-enumeration. (TASK-005)
 - `POST /v1/auth/refresh` — ротация refresh-токена: подпись и срок проверяются, старый `jti` удаляется из Redis, выдаётся новая пара access + refresh. Украденный refresh — одноразовый. (TASK-005)
@@ -102,7 +118,8 @@ Compare links — обновляются автоматически /committer r
 Замени <org>/<repo> на реальный путь после публикации репозитория.
 -->
 
-[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/r4m63/Stockyard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/r4m63/Stockyard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/r4m63/Stockyard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/r4m63/Stockyard/releases/tag/v0.1.0
