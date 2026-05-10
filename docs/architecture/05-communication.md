@@ -12,7 +12,7 @@
 graph LR
     Mobile["📱 Mobile"]
     GW["API Gateway"]
-    DBSvc["DB Service"]
+    CoreSvc["Core Service"]
     QSvc["Quotes Service"]
     Drv["C Driver"]
     PG[("PostgreSQL")]
@@ -22,12 +22,12 @@ graph LR
     Mobile -->|"HTTPS REST<br/>+ JSON"| GW
     Mobile -->|"WSS<br/>+ JSON frames"| GW
 
-    GW -->|"HTTP REST<br/>+ JSON"| DBSvc
+    GW -->|"HTTP REST<br/>+ JSON"| CoreSvc
     GW -->|"RESP<br/>(SUBSCRIBE,<br/>HGET)"| Rds
 
-    DBSvc -->|"PostgreSQL<br/>wire protocol<br/>+ raw SQL"| PG
-    DBSvc -->|"RESP (HGET)"| Rds
-    DBSvc -->|"HTTP / Native TCP"| CH
+    CoreSvc -->|"PostgreSQL<br/>wire protocol<br/>+ raw SQL"| PG
+    CoreSvc -->|"RESP (HGET)"| Rds
+    CoreSvc -->|"HTTP / Native TCP"| CH
 
     QSvc -->|"read() syscall<br/>+ binary format"| Drv
     QSvc -->|"RESP<br/>(PUBLISH, HSET,<br/>XADD)"| Rds
@@ -42,7 +42,7 @@ graph LR
 |---|---|---|---|---|
 | Mobile ↔ Gateway (запросы) | request/response | HTTPS REST | JSON | sync |
 | Mobile ↔ Gateway (котировки) | streaming | WSS | JSON frames | async, server-push |
-| Gateway ↔ DB Service | request/response | HTTP/1.1 | JSON | sync |
+| Gateway ↔ Core Service | request/response | HTTP/1.1 | JSON | sync |
 | Quotes ↔ Gateway | pub/sub | Redis Pub/Sub (RESP) | binary / JSON | async |
 | Driver ↔ Quotes | streaming | char device read() | packed binary | sync, blocking |
 | Service ↔ PostgreSQL | request/response | PG wire | raw SQL + bind | sync |
@@ -231,7 +231,7 @@ GET /v1/portfolio
 
 ---
 
-## 5.4. Внутренний API (Gateway ↔ DB Service)
+## 5.4. Внутренний API (Gateway ↔ Core Service)
 
 ### 5.4.1. Принципы
 
@@ -301,7 +301,7 @@ XADD    stream:quotes  *  ticker SBER  ts ...  bid ...  ask ...  last ...
 ```
 
 - `PUBLISH` — fanout без durability (горячая шина для Gateway).
-- `HSET` — последняя котировка для синхронных читателей (DB Service при исполнении ордеров).
+- `HSET` — последняя котировка для синхронных читателей (Core Service при исполнении ордеров).
 - `XADD` — durable backup на случай, если кто-то хочет догнать пропущенное.
 
 ### 5.5.3. Quotes Service → ClickHouse
@@ -347,7 +347,7 @@ SUBSCRIBE channel:quotes:*
 ### Уровни
 
 ```
-Mobile ──[5s timeout]──► Gateway ──[2s timeout]──► DB Service ──[1s]──► PG/Redis
+Mobile ──[5s timeout]──► Gateway ──[2s timeout]──► Core Service ──[1s]──► PG/Redis
 ```
 
 ### Формат ошибок
@@ -381,8 +381,8 @@ Mobile ──[5s timeout]──► Gateway ──[2s timeout]──► DB Servic
 | От → к | Таймаут | Retries |
 |---|---|---|
 | Mobile → Gateway | 5s | 1 (только для GET) |
-| Gateway → DB Service | 2s | 2 с экспоненциальным бэкоффом, только для идемпотентных |
-| DB Service → PostgreSQL | 1s | без ретраев (TX откатывается) |
+| Gateway → Core Service | 2s | 2 с экспоненциальным бэкоффом, только для идемпотентных |
+| Core Service → PostgreSQL | 1s | без ретраев (TX откатывается) |
 | Service → Redis | 200ms | 3 — это кэш, не страшно повторить |
 | Service → ClickHouse | 5s (для INSERT) | 5 — батчи нельзя терять |
 
@@ -401,8 +401,8 @@ Mobile ──[5s timeout]──► Gateway ──[2s timeout]──► DB Servic
 ```mermaid
 sequenceDiagram
     Mobile ->> Gateway: POST /auth/login {email,pwd}
-    Gateway ->> DBSvc: POST /internal/auth
-    DBSvc -->> Gateway: { userId, passwordValid: true }
+    Gateway ->> CoreSvc: POST /internal/auth
+    CoreSvc -->> Gateway: { userId, passwordValid: true }
     Gateway ->> Gateway: issue JWT (access+refresh)
     Gateway ->> Redis: SET session:{jti} userId TTL=15m
     Gateway -->> Mobile: { accessToken, refreshToken }
@@ -411,7 +411,7 @@ sequenceDiagram
     Mobile ->> Gateway: GET /portfolio (Bearer ...)
     Gateway ->> Gateway: validate JWT signature + exp
     Gateway ->> Redis: EXISTS session:{jti}
-    Gateway ->> DBSvc: GET /internal/users/{userId}/portfolio
+    Gateway ->> CoreSvc: GET /internal/users/{userId}/portfolio
 ```
 
 ### Rate limiting
@@ -441,7 +441,7 @@ EXPIRE ratelimit:{userId}:{minute_bucket} 60
 | WebSocket для котировок | SSE, Long polling, gRPC streaming | Двунаправленный, понятный мобильным разработчикам, есть в браузерах |
 | Redis Pub/Sub, не Kafka | Kafka, NATS | Pub/Sub встроен в Redis (брокер сообщений уже есть по ТЗ), не нужно поднимать ещё один компонент |
 | Раздельные REST для бизнеса и WS для котировок | Один WS-канал на всё | REST лучше отлаживается, кэшируется, идемпотентен |
-| HTTP + JSON между Gateway и DB Service | gRPC, Kafka commands | Тот же стек технологий (Kotlin + Ktor), низкий cognitive load |
+| HTTP + JSON между Gateway и Core Service | gRPC, Kafka commands | Тот же стек технологий (Kotlin + Ktor), низкий cognitive load |
 
 ---
 

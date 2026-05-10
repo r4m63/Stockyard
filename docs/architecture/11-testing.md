@@ -24,14 +24,14 @@ graph TB
 
     subgraph Int["Интеграционные (per-service)"]
         I1["Gateway + Redis"]
-        I2["DB Service + PostgreSQL + Redis"]
+        I2["Core Service + PostgreSQL + Redis"]
         I3["Quotes + Redis + ClickHouse + Fake Driver"]
         I4["C Driver — kernel-level"]
     end
 
     subgraph Unit["Юнит-тесты (per-class)"]
         U1["Gateway: routing, JWT, WsHub"]
-        U2["DB Service: domain logic"]
+        U2["Core Service: domain logic"]
         U3["Quotes: parser, batcher"]
         U4["Simulator: scenario logic"]
     end
@@ -50,7 +50,7 @@ graph TB
 | Сервис | Фреймворк |
 |---|---|
 | API Gateway | JUnit 5 + Kotest assertions + MockK |
-| DB Service | JUnit 5 + Kotest + MockK |
+| Core Service | JUnit 5 + Kotest + MockK |
 | Quotes Service | стандартный `testing` пакет Go + `testify` |
 | Load Simulator | JUnit 5 (если Kotlin) / `pytest` / `go test` |
 | C Driver | `kunit` / встроенные тесты + минимальный user-space harness |
@@ -68,7 +68,7 @@ graph TB
 | `DbServiceClient` | retry с экспонентой, timeout, маппинг ошибок |
 | route handlers | 200 / 401 / 422 для типовых вводов (через `Ktor testApplication`) |
 
-#### DB Service (Kotlin)
+#### Core Service (Kotlin)
 | Класс / модуль | Тест |
 |---|---|
 | `OrderService.placeOrder` | BUY с достаточным балансом, BUY с недостатком (`INSUFFICIENT_FUNDS`), SELL с недостатком позиции, повтор по idempotency-key |
@@ -92,7 +92,7 @@ graph TB
 | `Histogram` | p50/p95/p99 на известных распределениях |
 
 ### 11.2.3. Целевое покрытие
-- Бизнес-логика (domain layer DB Service): **≥ 80%**.
+- Бизнес-логика (domain layer Core Service): **≥ 80%**.
 - Транспорт и инфраструктура: **≥ 50%**.
 - Generated/configuration: не считаем.
 
@@ -108,7 +108,7 @@ graph TB
 
 ### 11.3.2. Карта интеграционных проверок
 
-#### IT-1: DB Service ↔ PostgreSQL
+#### IT-1: Core Service ↔ PostgreSQL
 **Цель:** проверить SQL, миграции, транзакции, констрейнты.
 
 ```kotlin
@@ -131,13 +131,13 @@ class OrderServiceIT {
 }
 ```
 
-#### IT-2: DB Service ↔ Redis
+#### IT-2: Core Service ↔ Redis
 **Цель:** чтение текущей цены при исполнении.
 
 - Quote есть в Redis → ордер исполняется по этой цене.
 - Quote отсутствует → REJECTED с кодом `NO_QUOTE_AVAILABLE`.
 
-#### IT-3: Gateway ↔ DB Service ↔ Redis (контрактный тест)
+#### IT-3: Gateway ↔ Core Service ↔ Redis (контрактный тест)
 **Цель:** end-to-end внутри backend, без C-драйвера и мобилок.
 
 - POST /v1/orders с реальным JWT → PostgreSQL содержит запись.
@@ -170,7 +170,7 @@ func TestPipelineIT(t *testing.T) {
 
 ```bash
 # Kotlin (Gradle)
-./gradlew :db-service:integrationTest
+./gradlew :core-service:integrationTest
 
 # Go
 go test -tags=integration ./...

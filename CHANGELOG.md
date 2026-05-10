@@ -19,8 +19,17 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+- Уровень хранения данных «из коробки»: PostgreSQL 16 + Redis 7 + ClickHouse 24 + Prometheus с postgres/redis exporters поднимаются одной командой `docker compose up -d`. Конфиги, healthchecks, ресурсные лимиты и cron-скрипт бэкапа PG. (TASK-001)
+- PostgreSQL-схема: 7 Flyway-миграций в `core-service/src/main/resources/db/migration/` — `users`, `accounts`, `instruments` с DML 50 тикеров MOEX, `orders` с `UNIQUE(user_id, idempotency_key)`, `positions`, `transactions` (audit), индекс `idx_orders_user_ticker`, `pg_stat_statements` + read-only роль `monitoring` для exporter'а. (TASK-001)
+- ClickHouse-схема: `quotes_ticks` (MergeTree partition by month + TTL 6 мес.) + Materialized Views `quotes_candles_1m`/`_1h` для свечей. Загружается через `/docker-entrypoint-initdb.d/`. (TASK-001)
+- API Gateway (Ktor) — публичный HTTP-сервер на `:8080`:
+  - `GET /health/live` всегда `200 {"status":"UP"}`.
+  - `GET /health/ready` проверяет Redis (blocking) и Core Service (info-only).
+  - WebSocket `/v1/ws` skeleton: `subscribe` / `unsubscribe` / `ping` → JSON-frames `subscribed` / `unsubscribed` / `pong`.
+  - 9 stub-эндпоинтов (`/v1/auth/*`, `/v1/orders`, `/v1/portfolio`, `/v1/instruments`, `/v1/quotes/*`) возвращают `501 NOT_IMPLEMENTED` в едином формате `{"error":{"code","message","details"}}`. Полная реализация — TASK-005..008. (TASK-003)
 
 ### Changed
+- Внутреннее имя сервиса бизнес-логики переименовано: «DB Service» → «Core Service» во всей документации, конфигах и контейнерах (`db-service/` → `core-service/`). Соответствует ТЗ §2.4 «Микросервис для работы с БД» как функциональному описанию роли. Mobile/RN клиенты и публичный REST-контракт **не затронуты**. (TASK-002)
 
 ### Deprecated
 

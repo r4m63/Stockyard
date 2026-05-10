@@ -97,7 +97,9 @@ git diff --stat
 
 ### Step 3 — Создание ветки
 
-Формат имени: **`<type>/[TASK-NNN-]<slug>`**
+Формат имени: **`<type>/<N>-<slug>`** (либо `<type>/<slug>` для задач без TASK ID)
+
+> **Stockyard convention:** имя ветки **не содержит префикс `TASK-`**. Если задача — `TASK-003`, ветка называется `feature/3-gateway-scaffold`. Число — без leading zeros (TASK-003 → `3`, TASK-012 → `12`). Это упрощает чтение и не дублирует ID, который уже виден в commit-footer'е (`Refs: TASK-003`) и в task ledger.
 
 | Тип задачи | Префикс ветки | Когда использовать |
 |---|---|---|
@@ -115,14 +117,16 @@ git diff --stat
 - kebab-case, lowercase
 - максимум 4–5 слов
 - transliterate с русского при необходимости (`«регистрация-пользователя»` → `user-registration`)
-- если `TASK-NNN` есть — включи в имя
+- если задача = `TASK-NNN` — извлеки число (без префикса `TASK-`, без leading zeros) и поставь его в начале: `<N>-<slug>`
 
 **Примеры:**
-- ✅ `feature/TASK-001-user-registration`
-- ✅ `fix/TASK-012-buy-race-condition`
-- ✅ `refactor/TASK-020-extract-quotes-port`
+- ✅ `feature/1-user-registration`
+- ✅ `fix/12-buy-race-condition`
+- ✅ `refactor/20-extract-quotes-port`
 - ✅ `docs/update-architecture-readme`
 - ✅ `hotfix/jwt-bypass-vulnerability`
+- ❌ `feature/1-user-registration` (префикс `TASK-` запрещён)
+- ❌ `feature/003-gateway-scaffold` (leading zeros не нужны — пиши `3-…`)
 - ❌ `task1` (нет типа, нет описания)
 - ❌ `feature/regstation` (опечатки)
 - ❌ `Feature/User-Registration` (PascalCase, должно быть kebab)
@@ -130,7 +134,7 @@ git diff --stat
 
 **Команда создания:**
 ```bash
-git checkout -b feature/TASK-001-user-registration
+git checkout -b feature/1-user-registration
 ```
 
 ⚠️ Перед созданием ветки — проверь, что текущее состояние чистое (`git status` пустой) или что мы стартуем с `main`/`master`. Если на текущей ветке есть незафиксированные изменения — спроси: stash, commit на текущую, или брать с собой.
@@ -142,12 +146,14 @@ git checkout -b feature/TASK-001-user-registration
 **Правило:** один логический change = один коммит.
 
 Сгруппируй изменения по:
-1. **Скоупу:** изменения в `gateway/` отдельно от `mobile/` отдельно от `db-service/`.
+1. **Скоупу:** изменения в `gateway/` отдельно от `mobile/` отдельно от `core-service/`.
 2. **Типу:** код фичи отдельно от тестов; добавление зависимостей — отдельный коммит.
 3. **Логической единице:** «миграция БД» отдельно от «эндпоинт» отдельно от «UI к нему» — НО если это одна неделимая фича на одном слое, можно одним коммитом.
 
+> **Stockyard convention для scope:** в скобках коммита пиши **чистое имя сервиса** без суффикса `-service`: `gateway`, `core`, `quotes`. Директории остаются как есть (`core-service/`, `quotes-service/`) — речь только про commit message.
+
 **Хорошие разбиения:**
-- ✅ `feat(db-service): add users table migration` + `feat(gateway): add POST /v1/auth/register` + `feat(mobile): add register screen` + `test(db-service): add UserService unit tests`
+- ✅ `feat(core): add users table migration` + `feat(gateway): add POST /v1/auth/register` + `feat(mobile): add register screen` + `test(core): add UserService unit tests`
 - ✅ `refactor(quotes): extract redis publisher to separate package` (один логический рефактор)
 
 **Плохие:**
@@ -187,7 +193,7 @@ git checkout -b feature/TASK-001-user-registration
 | Scope | Что охватывает |
 |---|---|
 | `gateway` | API Gateway (Ktor) |
-| `db-service` | DB Service (Kotlin) |
+| `core` | Core Service (Kotlin) — **`core`, не `core-service`** |
 | `quotes` | Quotes Service (Go) |
 | `driver` | C Linux Driver |
 | `mobile` | Android-клиент |
@@ -228,13 +234,13 @@ git checkout -b feature/TASK-001-user-registration
 feat(gateway): add /v1/orders endpoint with idempotency
 
 Implements POST /v1/orders supporting BUY/SELL with Idempotency-Key
-header per ADR-005. Validates JWT, forwards to DB Service.
+header per ADR-005. Validates JWT, forwards to Core Service.
 
 Refs: TASK-012
 ```
 
 ```
-fix(db-service): hold FOR UPDATE lock on accounts in concurrent BUY
+fix(core): hold FOR UPDATE lock on accounts in concurrent BUY
 
 Two parallel BUY orders from same user could both pass balance check
 because the SELECT was not locking. Add SELECT ... FOR UPDATE on
@@ -260,7 +266,7 @@ Closes architectural audit finding R3.
 ```
 
 ```
-test(db-service): add IT for double-click idempotency
+test(core): add IT for double-click idempotency
 
 Refs: TASK-001
 ```
@@ -309,15 +315,15 @@ EOF
 Перед каждой серией коммитов **покажи план пользователю**:
 
 ```
-Планирую сделать 3 коммита на ветке feature/TASK-001-user-registration:
+Планирую сделать 3 коммита на ветке feature/1-user-registration:
 
-1. feat(db-service): add users + accounts migration V1
-   Files: db-service/src/main/resources/db/migration/V1__init_users.sql
+1. feat(core): add users + accounts migration V1
+   Files: core-service/src/main/resources/db/migration/V1__init_users.sql
 
-2. feat(db-service): implement UserService.register with argon2
-   Files: db-service/src/main/kotlin/.../UserService.kt
-          db-service/src/main/kotlin/.../UserRepository.kt
-          db-service/src/main/kotlin/.../UserApi.kt
+2. feat(core): implement UserService.register with argon2
+   Files: core-service/src/main/kotlin/.../UserService.kt
+          core-service/src/main/kotlin/.../UserRepository.kt
+          core-service/src/main/kotlin/.../UserApi.kt
 
 3. feat(gateway): add POST /v1/auth/register endpoint
    Files: gateway/src/main/kotlin/.../AuthRoutes.kt
@@ -438,12 +444,12 @@ EOF
 После создания коммитов (включая changelog-коммит) **добавь записи в Handoff Log** соответствующего TASK-NNN-*.md:
 
 ```
-- 2026-05-09T23:00Z: /committer — branch feature/TASK-001-user-registration, 4 commits (3 code + 1 changelog): <sha1>, <sha2>, <sha3>, <sha4>; CHANGELOG [Unreleased] updated
+- 2026-05-09T23:00Z: /committer — branch feature/1-user-registration, 4 commits (3 code + 1 changelog): <sha1>, <sha2>, <sha3>, <sha4>; CHANGELOG [Unreleased] updated
 ```
 
 Если был push:
 ```
-- 2026-05-09T23:05Z: /committer push — to origin/feature/TASK-001-user-registration
+- 2026-05-09T23:05Z: /committer push — to origin/feature/1-user-registration
 ```
 
 В Meta:
@@ -767,7 +773,7 @@ Preview:
 ```
 Diff трогает 47 файлов в 3 скоупах. Рекомендую разбить на 3+ коммита:
 1. feat(gateway): ... (12 файлов)
-2. feat(db-service): ... (18 файлов)
+2. feat(core): ... (18 файлов)
 3. test: ... (17 файлов)
 Согласен или есть другая логика?
 ```
@@ -789,14 +795,14 @@ Diff трогает 47 файлов в 3 скоупах. Рекомендую р
 
 Если коммитов на `main` ещё нет, но изменения в working tree:
 ```bash
-git checkout -b feature/TASK-NNN-<slug>  # переносит изменения на новую ветку
+git checkout -b feature/<N>-<slug>  # переносит изменения на новую ветку
 ```
 
 Если уже закоммитил на `main` локально (не запушил):
 ```bash
-git branch feature/TASK-NNN-<slug>  # создать ветку с этими коммитами
+git branch feature/<N>-<slug>  # создать ветку с этими коммитами
 git reset --hard origin/main         # ⚠️ деструктив, СПРОСИ пользователя
-git checkout feature/TASK-NNN-<slug>
+git checkout feature/<N>-<slug>
 ```
 
 ### Reverting
@@ -839,7 +845,7 @@ git revert <sha>
 ### Release запрошен не из main/master
 
 ```
-Текущая ветка: feature/TASK-001-foo
+Текущая ветка: feature/1-foo
 Обычно релиз делается из main после merge всех фич.
 
 Подтверждаешь release с feature-ветки? Это создаст tag, указывающий на коммит,
@@ -874,7 +880,7 @@ git revert <sha>
 
 ```
 Типы:    feat fix docs style refactor perf test build ci chore revert
-Скоупы:  gateway db-service quotes driver mobile rn simulator
+Скоупы:  gateway core quotes driver mobile rn simulator
          arch adr docs deploy ci deps tests changelog
 Ветки:   feature/ fix/ hotfix/ refactor/ test/ docs/ perf/ chore/ ci/
 ```

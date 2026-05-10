@@ -22,13 +22,13 @@ graph TB
         WSHub["<b>WS Hub</b><br/>connection registry,<br/>fanout"]
         Auth["<b>Auth Module</b><br/>JWT validation,<br/>refresh"]
         RateLim["<b>Rate Limiter</b><br/>per-user quota"]
-        DBClient["<b>DB Service Client</b><br/>HTTP/JSON"]
+        DBClient["<b>Core Service Client</b><br/>HTTP/JSON"]
         RedisClient["<b>Redis Client</b><br/>Pub/Sub<br/>+ HASH read"]
         TelemHook["<b>Telemetry Hook</b><br/>OTel SDK"]
     end
 
     Mobile["📱 Mobile"]
-    DBSvc["DB Service"]
+    CoreSvc["Core Service"]
     Redis[("Redis")]
     OTel["OTel"]
 
@@ -40,7 +40,7 @@ graph TB
     WSHub --> Auth
     WSHub --> RedisClient
     Router --> RedisClient
-    DBClient --> DBSvc
+    DBClient --> CoreSvc
     RedisClient --> Redis
     Auth -.-> TelemHook
     Router -.-> TelemHook
@@ -56,7 +56,7 @@ graph TB
 | **WS Hub** | Реестр открытых WS-соединений, подписка/отписка на тикеры, fanout входящих pub/sub-сообщений. |
 | **Auth Module** | Выпуск/валидация JWT, refresh-tokens, blacklist в Redis. |
 | **Rate Limiter** | Ограничение RPS на пользователя (token bucket в Redis). |
-| **DB Service Client** | HTTP-клиент к DB Service (Ktor client + retry/timeout). |
+| **Core Service Client** | HTTP-клиент к Core Service (Ktor client + retry/timeout). |
 | **Redis Client** | Подписка на `channel:quotes:*`, чтение `quotes:{ticker}`. |
 | **Telemetry Hook** | Перехват входящих/исходящих вызовов для трейсинга. |
 
@@ -90,7 +90,7 @@ gateway/
 
 ---
 
-## 3.2. DB Service (Kotlin)
+## 3.2. Core Service (Kotlin)
 
 ### Назначение
 Источник истины по бизнес-сущностям: пользователи, балансы, ордера, портфели. Вся транзакционная логика — здесь.
@@ -99,7 +99,7 @@ gateway/
 
 ```mermaid
 graph TB
-    subgraph DBSvc["DB Service (Kotlin + Ktor)"]
+    subgraph CoreSvc["Core Service (Kotlin + Ktor)"]
         IntAPI["<b>Internal HTTP API</b><br/>Ktor routing"]
 
         subgraph Domain["Domain layer"]
@@ -162,7 +162,7 @@ graph TB
 ### Структура исходников
 
 ```
-db-service/
+core-service/
 ├── src/main/kotlin/com/stockyard/db/
 │   ├── Application.kt
 │   ├── api/

@@ -71,7 +71,7 @@
 ## Handoff Log
 - 2026-05-09T12:00Z: created via /architect — design complete, suggested /backend
 - 2026-05-09T14:30Z: /backend started
-- 2026-05-09T18:00Z: /backend complete — DB Service endpoints ready, suggested /mobile and /tester
+- 2026-05-09T18:00Z: /backend complete — Core Service endpoints ready, suggested /mobile and /tester
 - ...
 ```
 

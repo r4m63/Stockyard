@@ -29,7 +29,7 @@
 sequenceDiagram
     participant M as Mobile
     participant GW as Gateway
-    participant DB as DB Service
+    participant DB as Core Service
     participant PG as PostgreSQL
     participant R as Redis
 
@@ -63,7 +63,7 @@ sequenceDiagram
 sequenceDiagram
     participant M as Mobile
     participant GW as Gateway
-    participant DB as DB Service
+    participant DB as Core Service
     participant PG as PostgreSQL
     participant R as Redis
 
@@ -152,7 +152,7 @@ sequenceDiagram
 sequenceDiagram
     participant M as Mobile
     participant GW as Gateway
-    participant DB as DB Service
+    participant DB as Core Service
     participant CH as ClickHouse
 
     M->>GW: GET /v1/quotes/SBER/history?from=...&to=...&interval=1m
@@ -177,7 +177,7 @@ sequenceDiagram
 sequenceDiagram
     participant M as Mobile
     participant GW as Gateway
-    participant DB as DB Service
+    participant DB as Core Service
     participant R as Redis
     participant PG as PostgreSQL
 
@@ -234,7 +234,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant DB as DB Service
+    participant DB as Core Service
     participant R as Redis
     participant PG as PostgreSQL
 
@@ -267,7 +267,7 @@ sequenceDiagram
 sequenceDiagram
     participant M as Mobile
     participant GW as Gateway
-    participant DB as DB Service
+    participant DB as Core Service
     participant PG as PostgreSQL
     participant R as Redis
 

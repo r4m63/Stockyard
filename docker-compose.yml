@@ -1,0 +1,220 @@
+# Stockyard storage layer — PostgreSQL + Redis + ClickHouse + Prometheus + exporters.
+#
+# Запуск:
+#   cp .env.example .env && vi .env        # заполнить пароли
+#   docker compose up -d
+#   docker compose ps                       # все три storage-контейнера → healthy
+#
+# См. docs/architecture/12-storage-operations.md §12.7 — почему compose в корне.
+# Application-сервисы (gateway, core-service, quotes-service) добавляются в этот же
+# файл отдельной задачей после скаффолда Kotlin/Go проектов.
+
+name: stockyard
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — OLTP, source of truth для денег и ордеров.
+  # docs/architecture/06-data.md §6.2, docs/architecture/12-storage-operations.md §12.1.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: stockyard-postgres
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:       { cpus: '2.0', memory: 4G }
+        reservations: { cpus: '1.0', memory: 2G }
+    environment:
+      POSTGRES_USER:     ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB:       ${PG_DB}
+      # Кастомный GUC, читаемый V7 миграцией для CREATE ROLE monitoring.
+      POSTGRES_INITDB_ARGS: "-c stockyard.monitoring_password=${MONITORING_PASSWORD}"
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./deploy/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./deploy/postgres/backup.sh:/backup.sh:ro
+      - ./volumes/backups/postgres:/backups
+    ports:
+      - "5432:5432"
+    networks: [stockyard]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: stockyard-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://monitoring:${MONITORING_PASSWORD}@postgres:5432/${PG_DB}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks: [stockyard]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Redis — кэш котировок, Pub/Sub, Streams, сессии.
+  # docs/architecture/06-data.md §6.3, docs/architecture/12-storage-operations.md §12.2.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: stockyard-redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:       { cpus: '1.0', memory: 1.5G }
+        reservations: { cpus: '0.5', memory: 1G }
+    command:
+      - redis-server
+      - /usr/local/etc/redis/redis.conf
+      - --requirepass
+      - ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+      - ./deploy/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "6379:6379"
+    networks: [stockyard]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0-alpine
+    container_name: stockyard-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR:     "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    ports:
+      - "9121:9121"
+    networks: [stockyard]
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # ClickHouse — time-series, история тиков и свечей.
+  # docs/architecture/06-data.md §6.4, docs/architecture/12-storage-operations.md §12.3.
+  # ---------------------------------------------------------------------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    container_name: stockyard-clickhouse
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:       { cpus: '2.0', memory: 4G }
+        reservations: { cpus: '1.0', memory: 2G }
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      CLICKHOUSE_DB:                       stockyard
+      CLICKHOUSE_USER:                     ${CH_USER}
+      CLICKHOUSE_PASSWORD:                 ${CH_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - ch-data:/var/lib/clickhouse
+      - ./deploy/clickhouse/config.xml:/etc/clickhouse-server/config.d/stockyard.xml:ro
+      - ./deploy/clickhouse/users.xml:/etc/clickhouse-server/users.d/stockyard.xml:ro
+      - ./deploy/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "8123:8123"   # HTTP
+      - "9000:9000"   # native
+      - "9363:9363"   # Prometheus /metrics
+    networks: [stockyard]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Prometheus — собирает метрики со всех exporters и сервисов.
+  # docs/architecture/09-observability.md §9.7.
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: stockyard-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [stockyard]
+    depends_on:
+      postgres-exporter: { condition: service_started }
+      redis-exporter:    { condition: service_started }
+      clickhouse:        { condition: service_healthy }
+
+  # ---------------------------------------------------------------------------
+  # API Gateway (Kotlin/Ktor) — единая публичная точка входа.
+  # docs/architecture/03-components.md §3.1, .claude/tasks/TASK-003-*
+  # ---------------------------------------------------------------------------
+  gateway:
+    build:
+      context: ./gateway-service
+      dockerfile: Dockerfile
+    container_name: stockyard-gateway
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:       { cpus: '1.0', memory: 768M }
+        reservations: { cpus: '0.5', memory: 384M }
+    environment:
+      GATEWAY_PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_URL: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      CORE_SERVICE_URL: http://core-service:8080
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: gateway-service
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-dev}
+    ports:
+      - "8080:8080"
+    networks: [stockyard]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  pg-data:    {}
+  redis-data: {}
+  ch-data:    {}
+  prom-data:  {}
+
+# -----------------------------------------------------------------------------
+# Network
+# -----------------------------------------------------------------------------
+networks:
+  stockyard:
+    driver: bridge

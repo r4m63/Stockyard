@@ -16,7 +16,7 @@
 
 ### Affected components
 - API Gateway (новый эндпоинт `POST /v1/auth/register`)
-- DB Service (новая бизнес-логика `UserService.register`)
+- Core Service (новая бизнес-логика `UserService.register`)
 - PostgreSQL (миграция: `users`, `accounts`)
 - Android client (экран Login → Register)
 - RN client (экран Login → Register)
@@ -57,10 +57,10 @@ POST /v1/auth/register
 ## Backend Implementation
 
 ### Files changed
-- `db-service/src/main/resources/db/migration/V1__init_users.sql` — DDL для users, accounts.
-- `db-service/src/main/kotlin/com/stockyard/db/domain/user/UserService.kt` — register, hash через argon2.
-- `db-service/src/main/kotlin/com/stockyard/db/domain/user/UserRepository.kt` — INSERT users + accounts в одной TX.
-- `db-service/src/main/kotlin/com/stockyard/db/api/UserApi.kt` — `POST /internal/users`.
+- `core-service/src/main/resources/db/migration/V1__init_users.sql` — DDL для users, accounts.
+- `core-service/src/main/kotlin/com/stockyard/db/domain/user/UserService.kt` — register, hash через argon2.
+- `core-service/src/main/kotlin/com/stockyard/db/domain/user/UserRepository.kt` — INSERT users + accounts в одной TX.
+- `core-service/src/main/kotlin/com/stockyard/db/api/UserApi.kt` — `POST /internal/users`.
 - `gateway/src/main/kotlin/com/stockyard/gateway/routing/AuthRoutes.kt` — `POST /v1/auth/register` + JWT issuance.
 
 ### Key decisions
@@ -70,7 +70,7 @@ POST /v1/auth/register
 
 ### API endpoints implemented
 - `POST /v1/auth/register` — наружу (Gateway).
-- `POST /internal/users` — внутренний (DB Service).
+- `POST /internal/users` — внутренний (Core Service).
 
 ### SQL migrations
 - `V1__init_users.sql`
@@ -115,7 +115,7 @@ POST /v1/auth/register
 - Не запускался для этого изолированного сценария.
 
 ### Coverage delta
-- DB Service: +6% (был 0%, стал 6% — ожидаемо для одной фичи).
+- Core Service: +6% (был 0%, стал 6% — ожидаемо для одной фичи).
 
 ### Findings
 - Нет.
