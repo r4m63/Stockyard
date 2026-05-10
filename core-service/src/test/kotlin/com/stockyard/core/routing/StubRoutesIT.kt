@@ -20,8 +20,11 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Testcontainers
 
 /**
- * Проверка что все 7 internal-эндпоинтов из 05-communication §5.4.2
- * возвращают 501 NOT_IMPLEMENTED в едином формате ошибок.
+ * Проверка что оставшиеся internal-эндпоинты (orders / portfolio / instruments /
+ * quotes-history) ещё возвращают 501 NOT_IMPLEMENTED в едином формате ошибок.
+ *
+ * `/internal/users` и `/internal/auth` стали реальными в TASK-005 — их IT в
+ * [com.stockyard.core.api.UserApiIT].
  */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -33,29 +36,11 @@ class StubRoutesIT {
     @BeforeAll fun start() { pg.start(); redis.start() }
     @AfterAll  fun stop()  { pg.stop(); redis.stop() }
 
-    private fun ApplicationTestBuilderInstall() = Unit  // helper marker
-
     private suspend fun assertNotImplemented(resp: HttpResponse) {
         resp.status shouldBe HttpStatusCode.NotImplemented
         val body = resp.bodyAsText()
         body shouldContain "\"error\""
         body shouldContain "\"code\":\"NOT_IMPLEMENTED\""
-    }
-
-    @Test
-    fun `POST internal users returns 501`() = testApplication {
-        installTestModule(pgHost = pg.host, pgPort = pg.firstMappedPort,
-            pgUser = pg.username, pgPassword = pg.password,
-            redisUrl = "redis://${redis.host}:${redis.firstMappedPort}")
-        assertNotImplemented(client.post("/internal/users"))
-    }
-
-    @Test
-    fun `POST internal auth returns 501`() = testApplication {
-        installTestModule(pgHost = pg.host, pgPort = pg.firstMappedPort,
-            pgUser = pg.username, pgPassword = pg.password,
-            redisUrl = "redis://${redis.host}:${redis.firstMappedPort}")
-        assertNotImplemented(client.post("/internal/auth"))
     }
 
     @Test
