@@ -19,6 +19,10 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+- `POST /v1/auth/register` — регистрация пользователя по email + паролю: Argon2id-хэш с pepper, выдача access (TTL 15 мин) + refresh (TTL 30 дней) JWT-токенов, автоматическое создание RUB-счёта с начальным депозитом 1 000 000,00 ₽. (TASK-005)
+- `POST /v1/auth/login` — вход по email + паролю; generic `401 INVALID_CREDENTIALS` (не различает «email не найден» от «неверный пароль») для защиты от user-enumeration. (TASK-005)
+- `POST /v1/auth/refresh` — ротация refresh-токена: подпись и срок проверяются, старый `jti` удаляется из Redis, выдаётся новая пара access + refresh. Украденный refresh — одноразовый. (TASK-005)
+- Внутренние эндпоинты Core Service: `POST /internal/users` (создание user + accounts в одной PostgreSQL-транзакции) и `POST /internal/auth` (проверка пароля через Argon2id `PasswordHasher`). (TASK-005)
 
 ### Changed
 
