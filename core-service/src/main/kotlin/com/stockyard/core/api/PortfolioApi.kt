@@ -1,17 +1,21 @@
 package com.stockyard.core.api
 
+import com.stockyard.core.domain.portfolio.PortfolioService
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 
 /**
- * Internal Portfolio API. Stub — реальный flow в TASK-007.
- * Возвращает balance + positions[]; читает PG (accounts + positions).
+ * Internal API портфеля. Реализован в TASK-007.
  */
-fun Route.portfolioApi() {
+fun Route.portfolioApi(portfolioService: PortfolioService) {
     route("/internal") {
         get("/users/{userId}/portfolio") {
-            throw NotImplementedError("GET /internal/users/{userId}/portfolio coming in TASK-007")
+            val userId = call.parameters["userId"] ?: throw IllegalArgumentException("missing userId")
+            val portfolio = portfolioService.getPortfolio(userId)
+            call.respond(HttpStatusCode.OK, portfolio.toDto())
         }
     }
 }

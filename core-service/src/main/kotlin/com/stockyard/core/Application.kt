@@ -12,13 +12,16 @@ import com.stockyard.core.domain.account.AccountRepository
 import com.stockyard.core.domain.instrument.InstrumentRepository
 import com.stockyard.core.domain.order.OrderRepository
 import com.stockyard.core.domain.order.OrderService
+import com.stockyard.core.domain.portfolio.PortfolioService
 import com.stockyard.core.domain.position.PositionRepository
+import com.stockyard.core.domain.quotes.QuotesService
 import com.stockyard.core.domain.transaction.TransactionRepository
 import com.stockyard.core.domain.user.UserRepository
 import com.stockyard.core.domain.user.UserService
 import com.stockyard.core.persistence.DataSources
 import com.stockyard.core.persistence.FlywayBootstrap
 import com.stockyard.core.persistence.TransactionManager
+import com.stockyard.core.quotes.CandlesRepository
 import com.stockyard.core.quotes.DevPriceFixture
 import com.stockyard.core.quotes.QuotesPort
 import com.stockyard.core.redis.RedisModule
@@ -69,6 +72,7 @@ fun Application.module() {
 
     val userService = UserService(userRepo, txManager, passwordHasher)
     val quotesPort = QuotesPort(redis)
+    val candlesRepo = CandlesRepository(dataSources.clickhouse)
     val orderService = OrderService(
         tx = txManager,
         instruments = instrumentRepo,
@@ -78,6 +82,8 @@ fun Application.module() {
         transactions = transactionRepo,
         quotes = quotesPort,
     )
+    val portfolioService = PortfolioService(dataSources, accountRepo, positionRepo, quotesPort)
+    val quotesService = QuotesService(dataSources, instrumentRepo, quotesPort, candlesRepo)
 
     // Flyway migration ДО открытия HTTP-сокета. Падение здесь = провал старта Ktor.
     FlywayBootstrap.migrate(dataSources.pg)
@@ -88,6 +94,7 @@ fun Application.module() {
             redis = redis,
             instrumentRepo = instrumentRepo,
             pgDs = dataSources.pg,
+            chDs = dataSources.clickhouse,
             intervalSec = config.devFixture.intervalSec,
             jitterPercent = config.devFixture.jitterPercent,
         ).also { it.start() }
@@ -109,8 +116,8 @@ fun Application.module() {
         healthRoutes(dataSources, redis, prometheusRegistry)
         userApi(userService)
         orderApi(orderService)
-        portfolioApi()
-        instrumentApi()
-        quotesApi()
+        portfolioApi(portfolioService)
+        instrumentApi(quotesService)
+        quotesApi(quotesService)
     }
 }

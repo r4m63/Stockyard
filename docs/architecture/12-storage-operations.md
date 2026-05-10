@@ -180,9 +180,14 @@ Volume 20 GB — десятикратный запас от объёма год�
 
 ## 12.2. Redis / KeyDB — operations
 
-### 12.2.0. DevPriceFixture (временный writer `quotes:*` до TASK-008)
+### 12.2.0. DevPriceFixture (временный writer `quotes:*` и `quotes_ticks` до TASK-008)
 
-До реализации Quotes Service (TASK-008) единственный writer `quotes:{ticker}` HASH — это `DevPriceFixture` в Core Service. Он стартует в `Application.module()` если `STOCKYARD_DEV_FIXTURE=true` (default `true` в dev), читает 50 тикеров из `instruments` и каждые 5 секунд делает random walk ±0.5% по bid/ask/last с записью через `HSET`. В prod-like окружении выключается через `STOCKYARD_DEV_FIXTURE=false`. Удаляется одним коммитом после TASK-008.
+До реализации Quotes Service (TASK-008) единственный writer `quotes:{ticker}` HASH в Redis **и** `quotes_ticks` в ClickHouse — это `DevPriceFixture` в Core Service. Он стартует в `Application.module()` если `STOCKYARD_DEV_FIXTURE=true` (default `true` в dev), читает 50 тикеров из `instruments` и каждые 5 секунд:
+
+1. Обновляет `HSET quotes:{ticker} bid ask last ts` (для `GET /v1/quotes/{ticker}` и расчёта current price в портфеле).
+2. Делает batch `INSERT INTO quotes_ticks (ticker, ts, bid, ask, last, volume)` через ClickHouse JDBC. Materialized View `quotes_candles_1m_mv` автоматически агрегирует свечи (нужно для `GET /v1/quotes/{ticker}/history`).
+
+В prod-like окружении выключается через `STOCKYARD_DEV_FIXTURE=false`. Удаляется одним коммитом после TASK-008 (Quotes Service полностью замещает оба write-канала).
 
 ### 12.2.1. Один или два инстанса
 

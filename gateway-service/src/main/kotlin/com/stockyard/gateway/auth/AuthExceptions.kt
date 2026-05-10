@@ -35,3 +35,11 @@ class InvalidTickerException(val ticker: String) : RuntimeException("invalid tic
 class InvalidQuantityException(val qty: Int) : RuntimeException("invalid quantity: $qty")
 
 class NoQuoteAvailableException(val ticker: String) : RuntimeException("no quote: $ticker")
+
+// ---- TASK-007: read-side ----
+
+class InstrumentNotFoundException(val ticker: String) : RuntimeException("instrument not found: $ticker")
+
+class InvalidIntervalException(val raw: String) : RuntimeException("invalid interval: $raw")
+
+class InvalidTimeRangeException(val reason: String) : RuntimeException("invalid time range: $reason")

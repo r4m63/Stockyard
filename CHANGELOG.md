@@ -19,6 +19,11 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+- `GET /v1/portfolio` — баланс и список открытых позиций по JWT-пользователю. Каждая позиция обогащается `currentPriceCents` из Redis (`HGETALL quotes:{ticker}`) и `unrealizedPnlCents = (current - avg) * qty`; если котировки нет, поля `currentPriceCents` и `unrealizedPnlCents` приходят `null`. Все денежные поля — `Long` cents. (TASK-007)
+- `GET /v1/quotes/{ticker}` — текущая котировка по тикеру (`bidCents`, `askCents`, `lastCents`, `ts`). `404 INSTRUMENT_NOT_FOUND` если тикера нет в каталоге; `422 NO_QUOTE_AVAILABLE` если тикер есть, но котировки пока не записаны. (TASK-007)
+- `GET /v1/quotes/{ticker}/history?from=&to=&interval=` — OHLC-свечи из ClickHouse за окно. Поддерживаются `interval=1m` (до 7 дней) и `interval=1h` (до 90 дней); `422 INVALID_INTERVAL` или `422 INVALID_TIME_RANGE` при выходе за границы. (TASK-007)
+- `GET /v1/instruments` — каталог из 50 MOEX-тикеров с `name`, `type`, `lotSize`. (TASK-007)
+- `DevPriceFixture` теперь дополнительно пишет каждый тик в ClickHouse `quotes_ticks` через JDBC. Materialized views `quotes_candles_1m` / `quotes_candles_1h` начинают наполняться без ожидания TASK-008, поэтому `/v1/quotes/{ticker}/history` отдаёт ненулевые свечи в dev. Удалится одним коммитом, когда Quotes Service возьмёт оба write-канала на себя. (TASK-007)
 
 ### Changed
 

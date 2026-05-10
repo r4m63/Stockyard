@@ -26,6 +26,19 @@ class AccountRepository {
         }
 
     /**
+     * Read-only чтение баланса без FOR UPDATE. Для портфельных GET'ов и подобных
+     * read-эндпоинтов, где блокировка не нужна.
+     */
+    fun findBalance(conn: Connection, userId: String, currency: String): Long? =
+        conn.prepareStatement(
+            "SELECT balance_cents FROM accounts WHERE user_id = ? AND currency = ?",
+        ).use { ps ->
+            ps.setString(1, userId)
+            ps.setString(2, currency)
+            ps.executeQuery().use { rs -> if (rs.next()) rs.getLong("balance_cents") else null }
+        }
+
+    /**
      * Применяет дельту к балансу. Положительная — приход (SELL proceeds, DEPOSIT),
      * отрицательная — расход (BUY cost). Вызывающий гарантирует, что строка уже
      * заблокирована через [findBalanceForUpdate] и проверка balance >= |delta| (для отрицательных)

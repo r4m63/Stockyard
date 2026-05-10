@@ -188,12 +188,19 @@ GET /v1/orders?status=EXECUTED&limit=50&cursor=...
 
 ```http
 GET /v1/portfolio
+Authorization: Bearer <JWT>
 
 → 200 OK
 {
-  "balance": { "amount": 100000.00, "currency": "RUB" },
+  "balance": { "amountCents": 99714300, "currency": "RUB" },
   "positions": [
-    {"ticker": "SBER", "qty": 10, "avgPrice": 280.00, "currentPrice": 285.60}
+    {
+      "ticker":           "SBER",
+      "qty":              10,
+      "avgPriceCents":    28570,
+      "currentPriceCents": 28612,        # из quotes:{ticker} в Redis; null если цены нет
+      "unrealizedPnlCents": 420          # qty * (current - avg); null если current null
+    }
   ]
 }
 ```
@@ -408,6 +415,9 @@ Mobile ──[5s timeout]──► Gateway ──[2s timeout]──► Core Serv
 | `INSUFFICIENT_POSITION` | 422 | core (SELL с qty < requested); details: `requiredQty`, `availableQty` |
 | `NO_QUOTE_AVAILABLE` | 422 | core, нет цены в Redis для тикера (rare; см. DevPriceFixture / TASK-008) |
 | `IDEMPOTENCY_CONFLICT` | 409 | core, тот же Idempotency-Key с другим body |
+| `INSTRUMENT_NOT_FOUND` | 404 | core, тикер не в каталоге (TASK-007) |
+| `INVALID_INTERVAL` | 422 | core, interval не `1m` и не `1h` (TASK-007) |
+| `INVALID_TIME_RANGE` | 422 | core, `from >= to` или span превышает лимит для interval (TASK-007) |
 
 ### Retry policy
 
