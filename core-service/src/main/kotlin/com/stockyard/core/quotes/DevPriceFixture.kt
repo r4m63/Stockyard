@@ -11,25 +11,30 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
+import java.math.BigDecimal
+import java.sql.Timestamp
 import java.time.Instant
 import kotlin.random.Random
 
 /**
- * Временный writer `quotes:*` в Redis на время разработки до реализации
- * Quotes Service (TASK-008). На старте Core Service инициализирует HASH-ключи
- * `quotes:{ticker}` для всех 50 тикеров из `instruments` и каждые [intervalSec]
- * секунд делает random walk цен (±[jitterPercent]).
+ * Временный writer `quotes:*` в Redis + `quotes_ticks` в ClickHouse на время
+ * разработки до реализации Quotes Service (TASK-008). На старте Core Service
+ * инициализирует HASH-ключи `quotes:{ticker}` для всех 50 тикеров из
+ * `instruments` и каждые [intervalSec] секунд:
+ *   1) обновляет HASH в Redis (для current quote),
+ *   2) делает batch INSERT в ClickHouse `quotes_ticks` (MV сама пересчитает свечи).
  *
  * Включается флагом `STOCKYARD_DEV_FIXTURE=true` (HOCON `stockyard.devFixture.enabled`).
- * В prod-like окружении должно быть выключено — единственный writer там Quotes Service.
+ * В prod-like окружении выключается — единственный writer там Quotes Service.
  *
  * TODO(TASK-008): удалить весь класс и wire-up в Application после реализации
- * Driver → Quotes Service → Redis-pipeline.
+ * Driver → Quotes Service → Redis/ClickHouse pipeline.
  */
 class DevPriceFixture(
     private val redis: RedisModule,
     private val instrumentRepo: InstrumentRepository,
     private val pgDs: HikariDataSource,
+    private val chDs: HikariDataSource?,
     private val intervalSec: Long,
     private val jitterPercent: Double,
 ) {
@@ -57,6 +62,7 @@ class DevPriceFixture(
         log.atInfo()
             .addKeyValue("tickers.count", tickers.size)
             .addKeyValue("interval.sec", intervalSec)
+            .addKeyValue("ch.enabled", chDs != null)
             .log("DevPriceFixture initialized")
 
         job = scope.launch {
@@ -85,16 +91,48 @@ class DevPriceFixture(
     }
 
     private fun writeAll(snapshot: Map<String, Triple<Long, Long, Long>>) {
-        val now = Instant.now().toEpochMilli().toString()
+        val nowInstant = Instant.now()
+        val nowMs = nowInstant.toEpochMilli().toString()
+
+        // 1) Redis — current quote (HASH).
         redis.withCommandConnection { conn ->
             val sync = conn.sync()
             snapshot.forEach { (ticker, bidAskLast) ->
                 val (bid, ask, last) = bidAskLast
                 sync.hset(
                     "quotes:$ticker",
-                    mapOf("bid" to bid.toString(), "ask" to ask.toString(), "last" to last.toString(), "ts" to now),
+                    mapOf("bid" to bid.toString(), "ask" to ask.toString(), "last" to last.toString(), "ts" to nowMs),
                 )
             }
         }
+
+        // 2) ClickHouse — quotes_ticks (history). Batch INSERT по 50 тикеров.
+        // Если CH недоступен — логируем и продолжаем (Redis уже обновлён).
+        val ch = chDs ?: return
+        runCatching {
+            ch.connection.use { conn ->
+                conn.prepareStatement(
+                    "INSERT INTO quotes_ticks (ticker, ts, bid, ask, last, volume) VALUES (?, ?, ?, ?, ?, ?)",
+                ).use { ps ->
+                    snapshot.forEach { (ticker, bidAskLast) ->
+                        val (bid, ask, last) = bidAskLast
+                        ps.setString(1, ticker)
+                        ps.setObject(2, Timestamp.from(nowInstant))
+                        ps.setBigDecimal(3, centsToDecimal(bid))
+                        ps.setBigDecimal(4, centsToDecimal(ask))
+                        ps.setBigDecimal(5, centsToDecimal(last))
+                        ps.setLong(6, 0L)  // dev-fixture: volume фейковый, реальный — из биржи в TASK-008
+                        ps.addBatch()
+                    }
+                    ps.executeBatch()
+                }
+            }
+        }.onFailure { e ->
+            log.warn("DevPriceFixture: ClickHouse insert failed, continuing (Redis already updated): {}", e.message)
+        }
     }
+
+    /** `Long` cents → `Decimal(18,4)` рублей. Конверсия `/ 100` без потерь. */
+    private fun centsToDecimal(cents: Long): BigDecimal =
+        BigDecimal(cents).divide(BigDecimal(100), 4, java.math.RoundingMode.UNNECESSARY)
 }
