@@ -3,9 +3,9 @@
 ## Meta
 - ID: TASK-003
 - Created: 2026-05-10T23:50:00Z
-- Last updated: 2026-05-11T02:30:00Z
-- Stage: tested
-- Touched roles: architect, backend, reviewer, tester
+- Last updated: 2026-05-11T03:00:00Z
+- Stage: committed
+- Touched roles: architect, backend, reviewer, tester, committer
 
 ## Original Request
 спроектируй и на основу system design реализуй микросервис gateway-service
@@ -593,6 +593,7 @@ Scaffold-задача → unit на чистую логику + integration че
 - 2026-05-11T01:30:00Z: /backend round 2 — закрыты H1, H2, M1, M2, M3, M4, M5, L3 (8 findings). L1 переведён в TODO-комментарий с явной ссылкой на reviewer-finding (реальный sha256 OTel-агента не зафиксирован, делается при следующем bump). L2 закрыт добавлением версии в libs.versions.toml. L4 был false positive. `docker compose config` валиден после правок. Stage = backend-done. Suggested next: повторное /reviewer TASK-003 для финального gate.
 - 2026-05-11T02:00:00Z: /reviewer round 2 — gate **PASS**. Все 10 findings (H1, H2, M1-M5, L1-L3) подтверждены RESOLVED по `file:line`-evidence. 5 регрессионных проверок (порядок require/JwtVerifiers, try/finally в `withCommandConnection`, сохранение 401-handler в ErrorMapper, типы HOCON, отсутствие новых HIGH/CRITICAL) — все PASS. Stage = done. Готово к /tester TASK-003 (IT покрытие) и /committer TASK-003.
 - 2026-05-11T02:30:00Z: /tester — добавлены 12 unit + 26 IT тестов (7 файлов + 2 fixtures). Покрытие: WsHub, JwtVerifiers, RedisModule (с Testcontainers Redis), health endpoints (Redis up/down), все 8 stub routes + 404, 5 WS веток + binary frame ignore, fail-fast на пустом/коротком JWT_SECRET (verify H1). Тесты НЕ прогнаны в окружении — нет gradle CLI и docker socket для Testcontainers; прогон отложен на CI/локальную машину разработчика. Stage = tested. Suggested next: /committer TASK-003 (опционально — полный прогон тестов в CI до коммита).
+- 2026-05-11T03:00:00Z: /committer — branch `feature/3-gateway-scaffold` (без TASK- префикса по новой Stockyard convention), 7 атомарных коммитов: 2fda441 feat(core), 4031ff6 feat(deploy), 8473161 docs(arch), 0e8e9c1 feat(gateway), d164e50 test(gateway), 070e2e5 docs(task), 89256fe docs(changelog). CHANGELOG [Unreleased] обновлён. Working tree чист. Также обновлён `.claude/commands/committer.md` с новыми правилами (ветки без TASK-, scope = чистое имя сервиса). Push не выполнен. Stage = committed. Suggested next: `/committer push`.
 
 ## Backend Implementation
 

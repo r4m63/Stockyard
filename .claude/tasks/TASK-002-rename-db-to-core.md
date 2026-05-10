@@ -116,3 +116,4 @@ Task ledger:
 
 ## Handoff Log
 - 2026-05-10T23:30:00Z: создан через /architect — выполнен сквозной rename DB Service → Core Service: 3 паттерна (DB Service, db-service, DBSvc) через `perl -pi -e` по всем .md/.yml/.yaml/.sql/.sh/.xml/.conf/.env*; директория db-service/ → core-service/ через mv. Smoke: grep на старые pattern → пусто; `docker compose config` → валиден. ADR не требуется (pure rename внутреннего идентификатора). Suggested next: /committer TASK-002.
+- 2026-05-11T03:00:00Z: /committer — rename вошёл в коммит 8473161 docs(arch) на ветке `feature/3-gateway-scaffold` вместе с storage architectural docs (TASK-001) и ADR-009 (TASK-003), потому что 4 файла одновременно содержат и rename-правки, и storage-extends — атомарно разделить без `git add -p` невозможно. Также включает обновление `.claude/commands/committer.md` с новыми Stockyard-conventions (ветки без TASK-, scope = чистое имя сервиса). Stage = committed.
