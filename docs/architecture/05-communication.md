@@ -242,11 +242,17 @@ GET /v1/portfolio
 
 ### 5.4.2. Примеры эндпоинтов
 
+> **Note (TASK-005).** Пароль передаётся **plaintext** через internal API. `PasswordHasher`
+> (Argon2id + HMAC-pepper, ADR-006) централизован в Core Service; pepper хранится только
+> там. Internal-сеть docker считается trusted-zone; mTLS — 📦 backlog.
+
 ```http
 POST /internal/users
-{ "email": "...", "passwordHash": "argon2$..." }
+{ "email": "...", "password": "..." }
 
 → 201 { "userId": "u_abc123" }
+→ 409 { "error": { "code": "EMAIL_TAKEN" } }
+→ 422 { "error": { "code": "INVALID_EMAIL" | "PASSWORD_TOO_WEAK" } }
 ```
 
 ```http
@@ -254,6 +260,7 @@ POST /internal/auth
 { "email": "...", "password": "..." }
 
 → 200 { "userId": "u_abc123", "passwordValid": true }
+→ 200 { "userId": null,       "passwordValid": false }    # generic для unknown email и wrong password
 ```
 
 ```http
@@ -367,14 +374,27 @@ Mobile ──[5s timeout]──► Gateway ──[2s timeout]──► Core Serv
 | Код | Когда |
 |---|---|
 | 400 | Невалидный запрос (синтаксис, типы) |
-| 401 | Нет/невалидный JWT |
+| 401 | Нет/невалидный JWT; INVALID_CREDENTIALS на login; INVALID_REFRESH_TOKEN на refresh |
 | 403 | JWT валиден, но нет прав |
 | 404 | Сущность не найдена |
-| 409 | Конфликт (idempotency key совпадает с другим телом) |
-| 422 | Бизнес-ошибка (INSUFFICIENT_FUNDS, INVALID_TICKER) |
+| 409 | Конфликт (idempotency key совпадает с другим телом; EMAIL_TAKEN на register) |
+| 422 | Бизнес-ошибка (INSUFFICIENT_FUNDS, INVALID_TICKER, INVALID_EMAIL, PASSWORD_TOO_WEAK) |
 | 429 | Rate limit |
 | 500 | Внутренняя ошибка |
-| 503 | Downstream недоступен |
+| 503 | Downstream недоступен (STORAGE_UNAVAILABLE) |
+
+### Коды ошибок (`error.code`)
+
+| Code | HTTP | Кто бросает |
+|---|---|---|
+| `INVALID_EMAIL` | 422 | gateway DTO-валидация + core service-валидация |
+| `PASSWORD_TOO_WEAK` | 422 | gateway DTO-валидация + core service-валидация |
+| `EMAIL_TAKEN` | 409 | core (UNIQUE constraint) → gateway пробрасывает |
+| `INVALID_CREDENTIALS` | 401 | gateway (login) — generic, не отличает «email не найден» от «пароль неверен» |
+| `INVALID_REFRESH_TOKEN` | 401 | gateway (refresh) — подпись, exp, либо revoked в Redis |
+| `STORAGE_UNAVAILABLE` | 503 | gateway, когда core недоступен или PG/Redis fail |
+| `NOT_IMPLEMENTED` | 501 | временно — для эндпоинтов, ждущих реализации |
+| `INSUFFICIENT_FUNDS`, `INVALID_TICKER`, `IDEMPOTENCY_CONFLICT` | 409/422 | order-flow, TASK-006+ |
 
 ### Retry policy
 
