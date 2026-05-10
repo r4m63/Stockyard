@@ -60,7 +60,7 @@ fun Application.module() {
     routing {
         healthRoutes(redis, coreClient)
         authRoutes(authService)
-        ordersRoutes()
+        ordersRoutes(coreClient)
         portfolioRoutes()
         instrumentsRoutes()
         quotesRoutes()

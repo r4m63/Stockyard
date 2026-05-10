@@ -2,9 +2,18 @@ package com.stockyard.gateway.error
 
 import com.stockyard.gateway.auth.EmailTakenException
 import com.stockyard.gateway.auth.GatewayValidationException
+import com.stockyard.gateway.auth.IdempotencyConflictException
+import com.stockyard.gateway.auth.InsufficientFundsException
+import com.stockyard.gateway.auth.InsufficientPositionException
 import com.stockyard.gateway.auth.InvalidCredentialsException
+import com.stockyard.gateway.auth.InvalidQuantityException
 import com.stockyard.gateway.auth.InvalidRefreshTokenException
+import com.stockyard.gateway.auth.InvalidTickerException
+import com.stockyard.gateway.auth.MissingIdempotencyKeyException
+import com.stockyard.gateway.auth.NoQuoteAvailableException
 import com.stockyard.gateway.client.CoreServiceException
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -46,6 +55,66 @@ fun Application.installErrorMapping() {
             call.respond(
                 HttpStatusCode.Unauthorized,
                 ApiErrorBody(ApiError("INVALID_REFRESH_TOKEN", "refresh token is invalid or expired")),
+            )
+        }
+        exception<MissingIdempotencyKeyException> { call, _ ->
+            call.respond(
+                HttpStatusCode.BadRequest,
+                ApiErrorBody(ApiError("BAD_REQUEST", "Idempotency-Key header is required")),
+            )
+        }
+        exception<IdempotencyConflictException> { call, _ ->
+            call.respond(
+                HttpStatusCode.Conflict,
+                ApiErrorBody(ApiError("IDEMPOTENCY_CONFLICT", "idempotency key reused with different body")),
+            )
+        }
+        exception<InvalidTickerException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(ApiError("INVALID_TICKER", cause.message ?: "invalid ticker")),
+            )
+        }
+        exception<InvalidQuantityException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(ApiError("INVALID_QUANTITY", cause.message ?: "invalid quantity")),
+            )
+        }
+        exception<InsufficientFundsException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(
+                    ApiError(
+                        "INSUFFICIENT_FUNDS",
+                        "insufficient funds",
+                        buildJsonObject {
+                            put("requiredCents", JsonPrimitive(cause.requiredCents))
+                            put("availableCents", JsonPrimitive(cause.availableCents))
+                        },
+                    ),
+                ),
+            )
+        }
+        exception<InsufficientPositionException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(
+                    ApiError(
+                        "INSUFFICIENT_POSITION",
+                        "insufficient position",
+                        buildJsonObject {
+                            put("requiredQty", JsonPrimitive(cause.requiredQty))
+                            put("availableQty", JsonPrimitive(cause.availableQty))
+                        },
+                    ),
+                ),
+            )
+        }
+        exception<NoQuoteAvailableException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(ApiError("NO_QUOTE_AVAILABLE", cause.message ?: "no quote")),
             )
         }
         exception<CoreServiceException> { call, cause ->
