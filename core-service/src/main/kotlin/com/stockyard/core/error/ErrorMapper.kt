@@ -6,6 +6,9 @@ import com.stockyard.core.domain.order.InsufficientPositionException
 import com.stockyard.core.domain.order.InvalidQuantityException
 import com.stockyard.core.domain.order.InvalidTickerException
 import com.stockyard.core.domain.order.NoQuoteAvailableException
+import com.stockyard.core.domain.quotes.InstrumentNotFoundException
+import com.stockyard.core.domain.quotes.InvalidIntervalException
+import com.stockyard.core.domain.quotes.InvalidTimeRangeException
 import com.stockyard.core.domain.user.EmailTakenException
 import com.stockyard.core.domain.user.ValidationException
 import io.ktor.http.HttpStatusCode
@@ -93,6 +96,24 @@ fun Application.installErrorMapping() {
             call.respond(
                 HttpStatusCode.Conflict,
                 ApiErrorBody(ApiError("IDEMPOTENCY_CONFLICT", "idempotency key reused with different body")),
+            )
+        }
+        exception<InstrumentNotFoundException> { call, cause ->
+            call.respond(
+                HttpStatusCode.NotFound,
+                ApiErrorBody(ApiError("INSTRUMENT_NOT_FOUND", cause.message ?: "instrument not found")),
+            )
+        }
+        exception<InvalidIntervalException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(ApiError("INVALID_INTERVAL", cause.message ?: "invalid interval")),
+            )
+        }
+        exception<InvalidTimeRangeException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(ApiError("INVALID_TIME_RANGE", cause.message ?: "invalid time range")),
             )
         }
         exception<BadRequestException> { call, cause ->

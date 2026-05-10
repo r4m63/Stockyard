@@ -83,4 +83,28 @@ class PositionRepository {
             ps.setString(3, ticker)
             ps.executeUpdate()
         }
+
+    /**
+     * Все позиции пользователя с qty > 0, для GET /v1/portfolio.
+     * Read-only, без блокировок.
+     */
+    fun listByUser(conn: Connection, userId: String): List<Position> =
+        conn.prepareStatement(
+            "SELECT user_id, ticker, qty, avg_price_cents FROM positions " +
+                "WHERE user_id = ? AND qty > 0 ORDER BY ticker",
+        ).use { ps ->
+            ps.setString(1, userId)
+            ps.executeQuery().use { rs ->
+                val acc = mutableListOf<Position>()
+                while (rs.next()) {
+                    acc += Position(
+                        userId = rs.getString("user_id"),
+                        ticker = rs.getString("ticker"),
+                        qty = rs.getInt("qty"),
+                        avgPriceCents = rs.getLong("avg_price_cents"),
+                    )
+                }
+                acc
+            }
+        }
 }

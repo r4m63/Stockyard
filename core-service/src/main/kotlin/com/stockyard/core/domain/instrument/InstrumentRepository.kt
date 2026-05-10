@@ -24,4 +24,23 @@ class InstrumentRepository {
                 acc
             }
         }
+
+    /** Полный каталог — для GET /v1/instruments. */
+    fun listAll(conn: Connection): List<Instrument> =
+        conn.prepareStatement(
+            "SELECT ticker, name, type, lot_size FROM instruments ORDER BY ticker",
+        ).use { ps ->
+            ps.executeQuery().use { rs ->
+                val acc = mutableListOf<Instrument>()
+                while (rs.next()) {
+                    acc += Instrument(
+                        ticker = rs.getString("ticker"),
+                        name = rs.getString("name"),
+                        type = rs.getString("type"),
+                        lotSize = rs.getInt("lot_size"),
+                    )
+                }
+                acc
+            }
+        }
 }
