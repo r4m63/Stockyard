@@ -3,8 +3,8 @@
 ## Meta
 - ID: TASK-007
 - Created: 2026-05-11T14:00:00Z
-- Last updated: 2026-05-11T17:00:00Z
-- Stage: committed
+- Last updated: 2026-05-11T17:05:00Z
+- Stage: pushed
 - Touched roles: architect, backend, reviewer, committer
 
 ## Original Request
@@ -474,3 +474,4 @@ EXTEND:
 - 2026-05-11T15:00:00Z: /backend — реализованы 4 эндпоинта (4 gateway + 4 internal core) по 26-шаговому плану. Новые файлы: 8 в core + 3 в gateway. DevPriceFixture расширен до dual-writer. **Open question P1:** MV `quotes_candles_1h` отсутствует — false alarm, разрешено в /reviewer. Suggested next: /reviewer TASK-007.
 - 2026-05-11T16:00:00Z: /reviewer — **gate: PASS**, 0 critical, 0 high, 2 medium (M1 cross-domain NoQuoteAvailable из order-domain, M2 RoundingMode.UNNECESSARY в DevPriceFixture), 7 low. **P1 backend — false alarm:** `quotes_candles_1h` table + MV ЕСТЬ в `deploy/clickhouse/init.sql:57,71`. Деньги только Long cents, ORM не появился, userId из JWT всегда, SQL без концатенации user-input. Готово к merge. Suggested next: /committer TASK-007.
 - 2026-05-11T17:00:00Z: /committer — branch `feature/7-read-side-api`, 7 commits: `a6c65da` feat(core) read-side services, `9e51593` feat(core) DevPriceFixture CH dual-writer, `8c20811` feat(gateway) read-side routes with JWT, `144a38a` docs(arch) read-side contracts + CH dual-writer, `b20b7c4` docs(arch) README tone cleanup (carry-over, no TASK ref), `31bece7` docs(task) TASK-007 ledger, `502dfa1` docs(changelog) update. CHANGELOG `[Unreleased]` пополнен 5 user-visible записями. Suggested next: `/committer push`.
+- 2026-05-11T17:05:00Z: /committer push — to `origin/feature/7-read-side-api` (`--set-upstream`). PR URL: https://github.com/r4m63/Stockyard/pull/new/feature/7-read-side-api
