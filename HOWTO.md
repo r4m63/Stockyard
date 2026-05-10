@@ -104,7 +104,7 @@ Stockyard/
 
 **Когда вызывать:**
 - В архитекте отмечены шаги для backend-роли.
-- Меняется Kotlin (Gateway / DB Service), Go (Quotes Service), C (driver).
+- Меняется Kotlin (Gateway / Core Service), Go (Quotes Service), C (driver).
 - Меняется SQL-схема (миграции).
 
 **Что делает:**
@@ -238,7 +238,7 @@ Stockyard/
 
 **Допустимые типы:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
 
-**Допустимые скоупы для Stockyard:** `gateway`, `db-service`, `quotes`, `driver`, `mobile`, `rn`, `simulator`, `arch`, `adr`, `docs`, `deploy`, `ci`, `deps`, `tests`, `changelog`, `release`.
+**Допустимые скоупы для Stockyard:** `gateway`, `core-service`, `quotes`, `driver`, `mobile`, `rn`, `simulator`, `arch`, `adr`, `docs`, `deploy`, `ci`, `deps`, `tests`, `changelog`, `release`.
 
 **Шаблон ветки:** `<type>/[TASK-NNN-]<kebab-slug>`. Примеры: `feature/TASK-001-user-registration`, `fix/TASK-012-buy-race`, `docs/update-architecture-readme`, `chore/upgrade-kotlin-1.9`.
 
@@ -294,7 +294,7 @@ Stockyard/
 Что произойдёт:
 1. Создастся файл `.claude/tasks/TASK-001-add-orders-endpoint.md`.
 2. Архитектор-субагент прочитает требования и архитектуру.
-3. В файл запишутся: затронутые компоненты (Gateway + DB Service + PG), API-контракт, SQL-миграции, шаги реализации (роль → шаг), ADR-ссылки, риски, suggested next role.
+3. В файл запишутся: затронутые компоненты (Gateway + Core Service + PG), API-контракт, SQL-миграции, шаги реализации (роль → шаг), ADR-ссылки, риски, suggested next role.
 4. Тебе покажут краткий summary.
 
 **Важно:** прочитай дизайн глазами. Если что-то не так — скажи прямо в чат («перепроектируй с учётом X», «добавь обоснование почему Redis Pub/Sub»). Можно повторно вызвать `/architect TASK-001 пересмотри ...` для итерации.
@@ -315,7 +315,7 @@ Stockyard/
 Что произойдёт:
 1. Backend-роль прочитает task ledger.
 2. Прочитает релевантные архитектурные доки (05-communication, 06-data, 07-consistency).
-3. Прочитает существующий код в `gateway/` и `db-service/`.
+3. Прочитает существующий код в `gateway/` и `core-service/`.
 4. Напишет код по плану архитектора.
 5. Обновит `## Backend Implementation` в task ledger.
 
@@ -385,7 +385,7 @@ Stockyard/
    → TASK-005 создан, complexity SMALL, suggested: /backend
 
 [2] /backend TASK-005
-   → реализован эндпоинт в Gateway + DB Service.
+   → реализован эндпоинт в Gateway + Core Service.
 
 [3] /tester TASK-005
    → юнит + IT с Testcontainers, всё зелёное.
@@ -396,7 +396,7 @@ Stockyard/
 [5] /committer TASK-005
    → создал ветку feature/TASK-005-instruments-catalog
    → 2 атомарных коммита:
-     • feat(db-service): add InstrumentRepository.listAll
+     • feat(core-service): add InstrumentRepository.listAll
      • feat(gateway): add GET /v1/instruments endpoint
 
 [6] /committer push
@@ -463,8 +463,8 @@ Stockyard/
 [7] /committer TASK-012
    → создал ветку feature/TASK-012-buy-orders
    → 3 атомарных коммита:
-     • feat(db-service): add orders + positions migrations V3
-     • feat(db-service): implement OrderService.placeBuy with FOR UPDATE
+     • feat(core-service): add orders + positions migrations V3
+     • feat(core-service): implement OrderService.placeBuy with FOR UPDATE
      • feat(gateway): add POST /v1/orders endpoint
    → "Запустить /committer push?"
 ```

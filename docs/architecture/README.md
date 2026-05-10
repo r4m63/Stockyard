@@ -14,6 +14,7 @@
 - [09. Наблюдаемость. Какие метрики, трейсы и логи собираются и как мониторится система?](09-observability.md)
 - [10. Ключевые сценарии. Как компоненты взаимодействуют в основных пользовательских и системных потоках?](10-scenarios.md)
 - [11. Стратегия тестирования. Какие три уровня тестов используются и какое тестовое инструментальное обеспечение?](11-testing.md)
+- [12. Эксплуатация уровня хранения. Какие конфиги, connection-pool'ы, health-checks, бэкапы и failure modes у PG/Redis/ClickHouse?](12-storage-operations.md)
 
 ## Архитектурные решения (ADR)
 
@@ -26,6 +27,9 @@
 - [ADR-004](adr/ADR-004-single-tx-writer.md) — единственный транзакционный writer
 - [ADR-005](adr/ADR-005-idempotency-key.md) — идемпотентность через UNIQUE-индекс
 - [ADR-006](adr/ADR-006-argon2.md) — Argon2id для паролей
+- [ADR-007](adr/ADR-007-idempotency-key-retention.md) — idempotency-keys бессрочно
+- [ADR-008](adr/ADR-008-pg-no-partitioning-mvp.md) — PG без партиционирования в MVP
+- [ADR-009](adr/ADR-009-gradle-single-module.md) — Gradle single-module per backend service
 
 ## 🎯 MVP scope vs 📦 Backlog
 

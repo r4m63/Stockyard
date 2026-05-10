@@ -190,16 +190,25 @@ CREATE INDEX idx_txn_user ON transactions(user_id, created_at DESC);
 
 ### 6.2.4. Миграции
 
-Используем **Flyway** (или liquibase). Все миграции в `db-service/src/main/resources/db/migration/V<N>__<name>.sql`.
+Используем **Flyway**. Все миграции в `core-service/src/main/resources/db/migration/V<N>__<name>.sql`.
 
 ```
-V1__init.sql                    # users, accounts
-V2__instruments.sql             # каталог + сидинг 50 тикеров
+V1__init_users_accounts.sql     # users, accounts
+V2__instruments.sql             # каталог + сидинг 50 тикеров (см. seed/instruments-50.md)
 V3__orders.sql
 V4__positions.sql
 V5__transactions.sql
-V6__indexes_perf.sql            # дополнительные индексы по результатам нагрузочных тестов
+V6__indexes_perf.sql            # idx_orders_user_ticker
+V7__pg_stat_statements.sql      # CREATE EXTENSION + monitoring role (для exporter)
 ```
+
+Подробности (Flyway-конфиг, CI-flow, seed для dev) — в [12. §12.1.4](12-storage-operations.md#1214-migrations--seeding-flyway). Список 50 тикеров — [seed/instruments-50.md](seed/instruments-50.md).
+
+### 6.2.5. Партиционирование — НЕ в MVP
+
+Heap-таблицы `orders` и `transactions` **не партиционируются** в MVP. Объёмы (см. §6.6) ниже порога рентабельности партиционирования; глобальные UNIQUE-индексы (см. ADR-005, ADR-007) важны и работают только на не-партиционированных таблицах. Решение зафиксировано в [ADR-008](adr/ADR-008-pg-no-partitioning-mvp.md), там же — точка эволюции.
+
+ClickHouse-партиционирование `quotes_ticks` (§6.4.1) остаётся — это нативное и обязательное для MergeTree-TTL.
 
 ---
 
@@ -233,7 +242,7 @@ HSET    quotes:SBER  ts "..."  bid 28550  ask 28570  last 28560  volume 12345
 PUBLISH channel:quotes:SBER  '{"ts":"...","bid":285.50,...}'
 XADD    stream:quotes  *  ticker SBER  ts ...  bid 28550  ask 28570  last 28560
 
-# DB Service читает текущую цену для исполнения ордера
+# Core Service читает текущую цену для исполнения ордера
 HGET    quotes:SBER  ask
 
 # Gateway проверяет сессию
@@ -330,9 +339,9 @@ ORDER BY ts_minute;
 | Пользователь | при регистрации | редко (смена пароля) | soft delete (флаг) | — |
 | Аккаунт | при регистрации | при каждом ордере | вместе с пользователем | — |
 | Инструмент | при сидинге | редко | никогда (для целостности FK) | — |
-| Ордер | при размещении | при исполнении | никогда (audit) | партиции по месяцам |
+| Ордер | при размещении | при исполнении | никогда (audit) | без партиционирования в MVP, см. [ADR-008](adr/ADR-008-pg-no-partitioning-mvp.md) |
 | Позиция | при первой покупке | при каждой сделке | при qty=0 (опционально) | — |
-| Транзакция | при сделке | никогда | никогда (audit) | партиции по месяцам |
+| Транзакция | при сделке | никогда | никогда (audit) | без партиционирования в MVP, см. [ADR-008](adr/ADR-008-pg-no-partitioning-mvp.md) |
 | Сырой тик | в реальном времени | никогда | TTL 6 месяцев | дамп раз в год |
 | Свеча | агрегацией | непрерывно (MV) | TTL вместе с тиками | — |
 | Сессия | при login | при refresh | по TTL | — |
@@ -395,3 +404,5 @@ ORDER BY ts_minute;
 - ⬅ [05. Коммуникация и API](05-communication.md)
 - ➡ [07. Согласованность и транзакции](07-consistency.md)
 - ➡ [08. Масштабирование и производительность](08-scaling.md)
+- ➡ [12. Эксплуатация уровня хранения](12-storage-operations.md) — конфиги, пулы, health, бэкапы.
+- 📎 [seed/instruments-50.md](seed/instruments-50.md) — список 50 тикеров для V2 миграции.

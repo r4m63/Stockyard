@@ -68,7 +68,7 @@
 
 → **Один инстанс держит, есть запас ×3–5.** В demo деплое — 2 реплики для надёжности.
 
-#### DB Service
+#### Core Service
 
 | Метрика | Значение | Запас |
 |---|---|---|
@@ -128,7 +128,7 @@ graph TB
 |---|---|---|
 | `ulimit -n` на хосте Gateway | 30k+ открытых WS | `ulimit -n 65536+` (must-have!) |
 | GW heap / GC паузы | 50k+ WS на инстанс | реплики GW + ZGC |
-| Connection pool DB Service → PG | 1k+ TPS на инстанс | HikariCP 30–50, 2+ реплики DB Service |
+| Connection pool Core Service → PG | 1k+ TPS на инстанс | HikariCP 30–50, 2+ реплики Core Service |
 | PostgreSQL primary writes | 3–5k TPS | PgBouncer + read replicas |
 | PostgreSQL TX latency на ордерах | 5–10k TPS | async queue (Redis Streams), исполнение в фоне |
 | Redis Pub/Sub fanout | сотни тысяч msg/sec | Redis Cluster или замена на Kafka |
@@ -144,7 +144,7 @@ graph TB
 | Сервис | Тип | Как |
 |---|---|---|
 | API Gateway | **horizontal** | stateless, любое число реплик за L4 LB; sticky sessions не нужны (Pub/Sub fanout-ит во все) |
-| DB Service | **horizontal** | stateless; реплики делают свои TX к одной PG |
+| Core Service | **horizontal** | stateless; реплики делают свои TX к одной PG |
 | Quotes Service | **vertical** + опц. partitioning | один драйвер = один читатель; при росте — раздельные процессы по диапазону тикеров |
 | PostgreSQL | **vertical** + read replicas | бо́льшая VM + read-replicas для GET-эндпоинтов |
 | Redis | **vertical** + Cluster | до миллиона ops/sec на ноде; дальше — Cluster |
@@ -163,7 +163,7 @@ graph TB
     end
 
     Rds[("Redis Pub/Sub")]
-    DB["DB Service"]
+    DB["Core Service"]
 
     LB --> G1
     LB --> G2
@@ -193,7 +193,7 @@ graph TB
 sequenceDiagram
     participant M as Mobile
     participant GW as Gateway
-    participant DB as DB Service
+    participant DB as Core Service
     participant Q as Redis Stream
     participant W as Worker
 
@@ -223,7 +223,7 @@ sequenceDiagram
 ### Обязательные (без них упрёмся даже на малой нагрузке)
 
 1. **`ulimit -n 65536`** на хосте Gateway. 10к WS = 10к FD; дефолт 1024 — мгновенный отказ.
-2. **HikariCP пул** в DB Service: размер 30–50, `connectionTimeout` 1s, `maxLifetime` 30 min.
+2. **HikariCP пул** в Core Service: размер 30–50, `connectionTimeout` 1s, `maxLifetime` 30 min.
 3. **PostgreSQL config:**
    ```ini
    max_connections = 200
@@ -247,7 +247,7 @@ sequenceDiagram
 
 ### Учитываемые риски
 
-- **Argon2 — CPU-bottleneck при burst-логине.** Одна верификация ~30–80 мс CPU. При 10к одновременных регистраций (Load Simulator) пул потоков DB Service может упереться в CPU **раньше**, чем в PostgreSQL. Митигация: вынести `argon2.verify` в отдельный пул потоков (`Dispatchers.IO` с увеличенным `parallelism`), не блокировать основной пул для ордеров. См. [ADR-006](adr/ADR-006-argon2.md).
+- **Argon2 — CPU-bottleneck при burst-логине.** Одна верификация ~30–80 мс CPU. При 10к одновременных регистраций (Load Simulator) пул потоков Core Service может упереться в CPU **раньше**, чем в PostgreSQL. Митигация: вынести `argon2.verify` в отдельный пул потоков (`Dispatchers.IO` с увеличенным `parallelism`), не блокировать основной пул для ордеров. См. [ADR-006](adr/ADR-006-argon2.md).
 - **Pattern subscribe `channel:quotes:*`** в Redis медленнее обычного. На 50 каналах не критично; при росте до 500+ — переходить на explicit-подписки на нужные тикеры.
 
 ---
@@ -263,11 +263,11 @@ sequenceDiagram
 | 0–80% capacity | штатная работа, все SLO |
 | 80–100% | rate limiting на пользователя (429), приоритизация по типу запроса |
 | 100–120% | дроп новых WS-подписок (1013 Try Again Later); существующие продолжают работать |
-| > 120% | дроп новых REST (503); circuit breaker на DB Service |
+| > 120% | дроп новых REST (503); circuit breaker на Core Service |
 
 ### Circuit breaker
 
-В Gateway между DB Service: если 50% запросов в окне 30 сек упали → break, отдаём 503 на 10 сек, потом half-open.
+В Gateway между Core Service: если 50% запросов в окне 30 сек упали → break, отдаём 503 на 10 сек, потом half-open.
 
 ---
 
@@ -306,7 +306,7 @@ launch {
 |---|---|---|
 | edge-1 | nginx + GW × 3 | 8 vCPU / 8 GB |
 | edge-2 | GW × 2 | 4 vCPU / 4 GB |
-| app-1 | DB Service × 2, Quotes Service | 4 vCPU / 8 GB |
+| app-1 | Core Service × 2, Quotes Service | 4 vCPU / 8 GB |
 | data-1 | PostgreSQL primary | 8 vCPU / 32 GB |
 | data-2 | PostgreSQL replica + ClickHouse | 8 vCPU / 32 GB |
 | data-3 | Redis primary + replica | 4 vCPU / 16 GB |

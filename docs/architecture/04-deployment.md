@@ -42,7 +42,7 @@ graph TB
     subgraph Host["💻 Developer machine"]
         subgraph Docker["docker-compose"]
             GW["api-gateway<br/>:8080"]
-            DBSvc["db-service<br/>:8081"]
+            CoreSvc["core-service<br/>:8081"]
             QSvc["quotes-service<br/>:8082"]
             PG[("postgres:16<br/>:5432")]
             Rds[("redis:7<br/>:6379")]
@@ -81,7 +81,7 @@ graph TB
 
         subgraph Docker2["docker-compose"]
             GW["api-gateway<br/>(2 replicas)<br/>:8080"]
-            DBSvc["db-service<br/>:8081"]
+            CoreSvc["core-service<br/>:8081"]
             QSvc["quotes-service<br/>:8082"]
             PG[("postgres")]
             Rds[("redis")]
@@ -122,7 +122,7 @@ graph TB
     subgraph App["🟢 App tier"]
         GW1["api-gateway-1"]
         GW2["api-gateway-2"]
-        DBSvc["db-service<br/>(2 replicas)"]
+        CoreSvc["core-service<br/>(2 replicas)"]
         QSvc["quotes-service"]
     end
 
@@ -140,12 +140,12 @@ graph TB
 
     Internet --> LB
     LB --> GW1 & GW2
-    GW1 & GW2 --> DBSvc
+    GW1 & GW2 --> CoreSvc
     GW1 & GW2 --> Rds
-    DBSvc --> PgB --> PG
-    DBSvc --> PGr
-    DBSvc --> Rds
-    DBSvc --> CH
+    CoreSvc --> PgB --> PG
+    CoreSvc --> PGr
+    CoreSvc --> Rds
+    CoreSvc --> CH
     QSvc --> Rds
     QSvc --> CH
     Drv --> QSvc
@@ -166,7 +166,7 @@ graph LR
     end
 
     subgraph BackNet["backend net<br/>(docker bridge)"]
-        DBSvc["db-service"]
+        CoreSvc["core-service"]
         QSvc["quotes-service"]
         PG[("postgres")]
         Rds[("redis")]
@@ -181,16 +181,16 @@ graph LR
     end
 
     Nginx --> GW
-    GW --> DBSvc
+    GW --> CoreSvc
     GW --> Rds
-    DBSvc --> PG
-    DBSvc --> Rds
-    DBSvc --> CH
+    CoreSvc --> PG
+    CoreSvc --> Rds
+    CoreSvc --> CH
     QSvc --> Rds
     QSvc --> CH
 
     GW -.-> OTC
-    DBSvc -.-> OTC
+    CoreSvc -.-> OTC
     QSvc -.-> OTC
     OTC --> Jaeger
     OTC --> Prom
@@ -199,7 +199,7 @@ graph LR
 
 **Изоляция:**
 - `frontend` сеть — только Gateway и nginx.
-- `backend` сеть — все backend-сервисы и хранилища; **Gateway тоже в backend**, чтобы зват DB Service.
+- `backend` сеть — все backend-сервисы и хранилища; **Gateway тоже в backend**, чтобы зват Core Service.
 - `telemetry` сеть — отдельно, чтобы скачки телеметрии не влияли на основные пути.
 
 ---
@@ -210,7 +210,7 @@ graph LR
 |---|---|---|---|
 | nginx | 80 / 443 | 80 / 443 | HTTP / HTTPS |
 | api-gateway | 8080 | 8080 (dev only) | HTTP / WS |
-| db-service | 8081 | — | HTTP |
+| core-service | 8081 | — | HTTP |
 | quotes-service | 8082 | 8082 (только /metrics) | HTTP |
 | postgres | 5432 | 5432 (dev only) | Postgres wire |
 | redis | 6379 | 6379 (dev only) | RESP |
@@ -258,7 +258,7 @@ deploy/
 | Сервис | CPU | RAM |
 |---|---|---|
 | api-gateway | 0.5 | 512 MB |
-| db-service | 0.5 | 512 MB |
+| core-service | 0.5 | 512 MB |
 | quotes-service | 0.25 | 256 MB |
 | postgres | 0.5 | 512 MB |
 | redis | 0.25 | 256 MB |
@@ -273,7 +273,7 @@ deploy/
 |---|---|---|---|
 | nginx | 0.5 | 256 MB | |
 | api-gateway × 2 | 1 each = 2 | 1 GB each = 2 GB | держат 5к WS каждый |
-| db-service | 1 | 1 GB | |
+| core-service | 1 | 1 GB | |
 | quotes-service | 0.5 | 512 MB | |
 | postgres | 2 | 4 GB | shared_buffers 1 GB |
 | redis | 1 | 1 GB | |

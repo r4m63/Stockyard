@@ -17,7 +17,7 @@ graph TB
     GW["🚪 <b>API Gateway</b><br/>Kotlin + Ktor<br/><i>BFF, WS-fanout, JWT</i>"]
 
     %% Backend services
-    DBSvc["⚙️ <b>DB Service</b><br/>Kotlin + Ktor<br/><i>бизнес-логика, ордера</i>"]
+    CoreSvc["⚙️ <b>Core Service</b><br/>Kotlin + Ktor<br/><i>бизнес-логика, ордера</i>"]
     QSvc["📡 <b>Quotes Service</b><br/>Go<br/><i>сбор котировок</i>"]
 
     %% Driver
@@ -37,11 +37,11 @@ graph TB
     Sim -->|"HTTPS / WSS<br/>(тот же API)"| GW
 
     %% Internal
-    GW -->|"HTTP/JSON<br/>internal API"| DBSvc
+    GW -->|"HTTP/JSON<br/>internal API"| CoreSvc
     GW -->|"PUB/SUB<br/>HSET / HGET"| Rds
-    DBSvc -->|"SQL"| PG
-    DBSvc -->|"HGET<br/>(текущая цена)"| Rds
-    DBSvc -->|"SELECT<br/>(история)"| CH
+    CoreSvc -->|"SQL"| PG
+    CoreSvc -->|"HGET<br/>(текущая цена)"| Rds
+    CoreSvc -->|"SELECT<br/>(история)"| CH
 
     %% Quotes pipeline
     Drv -->|"read()"| QSvc
@@ -50,7 +50,7 @@ graph TB
 
     %% Telemetry
     GW -.->|"OTLP"| OTC
-    DBSvc -.->|"OTLP"| OTC
+    CoreSvc -.->|"OTLP"| OTC
     QSvc -.->|"OTLP"| OTC
 
     %% Styles
@@ -61,7 +61,7 @@ graph TB
     classDef observ fill:#e1d5e7,stroke:#9673a6
 
     class Android,RN,Sim client
-    class GW,DBSvc,QSvc service
+    class GW,CoreSvc,QSvc service
     class PG,Rds,CH storage
     class Drv driver
     class OTC observ
@@ -82,7 +82,7 @@ graph TB
 | Контейнер | Технология | Назначение | Источник в ТЗ |
 |---|---|---|---|
 | **API Gateway** | Kotlin + Ktor | Единая точка входа, JWT-auth, fanout котировок | п.3 |
-| **DB Service** | Kotlin + Ktor | Бизнес-логика, ордера, портфели | п.4 |
+| **Core Service** | Kotlin + Ktor | Бизнес-логика, ордера, портфели | п.4 |
 | **Quotes Service** | Go | Чтение драйвера и публикация котировок | п.6 |
 
 ### Системные компоненты
@@ -120,7 +120,7 @@ graph TB
     end
 
     subgraph L3["🟢 Application Layer"]
-        DBSvc["DB Service"]
+        CoreSvc["Core Service"]
         QSvc["Quotes Service"]
     end
 
@@ -154,7 +154,7 @@ graph TB
 
 ## Какие контейнеры публичны
 
-API Gateway — **multi-homed**: один процесс с интерфейсами в обеих сетях. Снаружи слушает HTTPS/WSS на :443, изнутри ходит к DB Service и Redis. Все остальные сервисы и хранилища — только в приватной сети.
+API Gateway — **multi-homed**: один процесс с интерфейсами в обеих сетях. Снаружи слушает HTTPS/WSS на :443, изнутри ходит к Core Service и Redis. Все остальные сервисы и хранилища — только в приватной сети.
 
 ```mermaid
 graph LR
@@ -166,7 +166,7 @@ graph LR
 
     subgraph Private["🔒 Private network"]
         GWi["API Gateway<br/>(private face,<br/>тот же процесс)"]
-        DBSvc
+        CoreSvc
         QSvc
         PG
         Rds
@@ -175,16 +175,16 @@ graph LR
 
     Internet --> GWp
     GWp -.->|"один процесс,<br/>две сети"| GWi
-    GWi --> DBSvc
+    GWi --> CoreSvc
     GWi --> Rds
     QSvc --> Rds
     QSvc --> CH
-    DBSvc --> PG
-    DBSvc --> Rds
-    DBSvc --> CH
+    CoreSvc --> PG
+    CoreSvc --> Rds
+    CoreSvc --> CH
 ```
 
-**Только API Gateway** доступен из публичной сети. Прямого доступа извне к DB Service, Quotes Service или хранилищам нет.
+**Только API Gateway** доступен из публичной сети. Прямого доступа извне к Core Service, Quotes Service или хранилищам нет.
 
 ## Связанные документы
 

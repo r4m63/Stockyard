@@ -22,7 +22,7 @@ MVP экосистемы для трейдинга на 10 000 одноврем�
 
 ## Состав системы
 
-- **4 микросервиса:** API Gateway (Ktor), DB Service (Kotlin), Quotes Service (Go), Load Simulator
+- **4 микросервиса:** API Gateway (Ktor), Core Service (Kotlin), Quotes Service (Go), Load Simulator
 - **2 мобильных клиента:** Android (Kotlin + Jetpack Compose) и React Native (TypeScript)
 - **1 драйвер Linux (C):** имитация биржи через `/dev/stockyard`
 - **Хранилища:** PostgreSQL (OLTP), Redis/KeyDB (cache + pub/sub), ClickHouse (time-series)
@@ -38,7 +38,7 @@ MVP экосистемы для трейдинга на 10 000 одноврем�
 |---|---|
 | **Android** | Kotlin, Jetpack Compose, Hilt, OkHttp, Retrofit, kotlinx.serialization |
 | **Cross-platform** | React Native, TypeScript, Redux Toolkit, axios |
-| **Backend (Gateway, DB Service)** | Kotlin, Ktor, корутины, kotlinx.serialization |
+| **Backend (Gateway, Core Service)** | Kotlin, Ktor, корутины, kotlinx.serialization |
 | **Backend (Quotes)** | Go (стандартная библиотека + go-redis + clickhouse-go) |
 | **Driver** | C (Linux kernel module / character device) |
 | **БД OLTP** | PostgreSQL — **только голый SQL, без ORM!** |
@@ -105,7 +105,7 @@ MVP экосистемы для трейдинга на 10 000 одноврем�
 ```
 ┌─ /architect "user registration"  →  TASK-001 создан, дизайн готов
 │
-├─ /backend TASK-001              →  Kotlin DB Service implementation
+├─ /backend TASK-001              →  Kotlin Core Service implementation
 │
 ├─ /mobile TASK-001               →  Android UI implementation
 │

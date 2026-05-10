@@ -51,14 +51,14 @@ graph TB
 | Сервис | SDK | Что инструментировано |
 |---|---|---|
 | API Gateway (Kotlin) | `io.opentelemetry:opentelemetry-sdk` + Ktor instrumentation | HTTP routes, WS, исходящие HTTP, Redis ops |
-| DB Service (Kotlin) | то же | HTTP, JDBC, Redis, ClickHouse |
+| Core Service (Kotlin) | то же | HTTP, JDBC, Redis, ClickHouse |
 | Quotes Service (Go) | `go.opentelemetry.io/otel` | driver reads, Redis ops, ClickHouse inserts |
 | Load Simulator | то же | для отчёта о тесте |
 
 ### Конвенция атрибутов (OTel semantic conventions)
 
 ```
-service.name        = "api-gateway" / "db-service" / "quotes-service"
+service.name        = "api-gateway" / "core-service" / "quotes-service"
 service.version     = "0.1.0"
 service.instance.id = uuid (на каждый запуск)
 deployment.environment = "dev" / "demo" / "prod"
@@ -132,7 +132,7 @@ stockyard.idempotency_key = "..."
 └── HTTP POST /orders (api-gateway)               240ms
     ├── jwt.verify                                  2ms
     ├── ratelimit.check                             1ms
-    └── HTTP POST /internal/orders (db-service)   220ms
+    └── HTTP POST /internal/orders (core-service)   220ms
         ├── auth.lookup                             5ms
         ├── HGET quotes:SBER (redis)                3ms
         ├── tx.begin                                1ms
@@ -177,7 +177,7 @@ stockyard.idempotency_key = "..."
   "msg": "order executed",
   "trace_id": "abc123...",
   "span_id": "def456...",
-  "service.name": "db-service",
+  "service.name": "core-service",
   "user.id": "u_abc123",
   "order.id": "o_xyz789",
   "order.side": "BUY",
@@ -248,7 +248,7 @@ stockyard.idempotency_key = "..."
 |---|---|
 | **Stockyard Overview** | RPS, latency p50/p95/p99, error rate по всем сервисам, число WS, ордеров/сек |
 | **API Gateway** | WS connections, входящий RPS по route, JWT verify time, downstream errors |
-| **DB Service** | TPS PostgreSQL, latency по эндпоинтам, размер пула соединений, ордеров EXECUTED/REJECTED |
+| **Core Service** | TPS PostgreSQL, latency по эндпоинтам, размер пула соединений, ордеров EXECUTED/REJECTED |
 | **Quotes Pipeline** | tick rate из драйвера, lag в Redis, размер батчей в ClickHouse, ошибки |
 | **Infrastructure** | CPU/RAM/Disk хостов, Redis hit rate, PG locks, ClickHouse merges |
 | **Business** | DAU, активные пользователи сейчас, ордеров/сутки, объёмы по тикерам |
@@ -371,7 +371,149 @@ if err := redis.Publish(ctx, channel, payload).Err(); err != nil {
 
 ---
 
+## 9.12. Storage instrumentation
+
+Общая OTel-конфигурация описана в §9.2–§9.10. Здесь — конкретика для **storage layer**: какими SDK инструментируются три хранилища, какие span-attributes навешиваются и какие Prometheus-exporter'ы рядом стоят. Cross-link: операционные параметры самих хранилищ — в [12. Эксплуатация уровня хранения](12-storage-operations.md).
+
+### 9.12.1. PostgreSQL (JDBC) — Kotlin-сервисы
+
+Используем **OpenTelemetry Java Agent** (`opentelemetry-javaagent.jar`) — auto-instrumentation, ноль кода. Подключение через `JAVA_TOOL_OPTIONS=-javaagent:/otel.jar` в Dockerfile сервиса. Альтернатива — точечный модуль `opentelemetry-jdbc` (instrumentation library); финальный выбор делается на этапе backend по результатам замера CPU overhead.
+
+Span создаётся на каждый JDBC statement. Semantic conventions:
+
+| Attribute | Пример | Источник |
+|---|---|---|
+| `db.system` | `postgresql` | agent |
+| `db.name` | `stockyard` | agent |
+| `db.user` | `stockyard` | agent |
+| `db.statement` | `INSERT INTO orders (...) VALUES (?, ...)` (sanitized — параметры не утекают) | agent |
+| `db.operation` | `INSERT` / `SELECT` / `UPDATE` | agent |
+| `db.sql.table` | `orders` | agent |
+| `net.peer.name` | `postgres` | agent |
+
+Кастомные **Stockyard**-атрибуты добавляются вручную на уровне business-span вокруг транзакции:
+
+```
+stockyard.tx.kind         = "order_buy" | "order_sell" | "deposit"
+stockyard.user_id         = "u_..."
+stockyard.order_id        = "o_..."
+stockyard.idempotency_key = "..."
+db.rows_affected          = 1
+```
+
+HikariCP-метрики экспортируются через **Micrometer → OTLP**:
+
+| Метрика | Тип |
+|---|---|
+| `hikaricp.connections` | gauge — общее количество |
+| `hikaricp.connections.active` | gauge — выданные сейчас |
+| `hikaricp.connections.idle` | gauge — свободные |
+| `hikaricp.connections.pending` | gauge — ожидающие выдачи (saturation signal) |
+| `hikaricp.connections.usage` | timer — длительность hold |
+| `hikaricp.connections.acquire` | timer — время ожидания соединения |
+| `hikaricp.connections.creation` | timer — время создания |
+| `hikaricp.connections.timeout` | counter — таймауты получения |
+
+### 9.12.2. Redis (Kotlin: Lettuce)
+
+Lettuce использует Micrometer `Observation API`, который мост-ит в OTel:
+
+```kotlin
+io.lettuce.core.tracing.MicrometerTracing(observationRegistry)
+```
+
+Атрибуты на span:
+
+| Attribute | Пример |
+|---|---|
+| `db.system` | `redis` |
+| `db.operation` | `HGET` / `PUBLISH` / `XADD` |
+| `db.redis.database_index` | `0` |
+| `net.peer.name` | `redis` |
+| `db.statement` | `HGET quotes:SBER ask` (без значений) |
+
+### 9.12.3. Redis (Go: go-redis) — Quotes Service
+
+Готовая библиотека `github.com/redis/go-redis/extra/redisotel/v9`:
+
+```go
+if err := redisotel.InstrumentTracing(rdb); err != nil { return err }
+if err := redisotel.InstrumentMetrics(rdb); err != nil { return err }
+```
+
+Атрибуты — те же `db.system=redis`, `db.operation`, `db.redis.database_index`. Метрики `go_redis_requests_total`, `go_redis_request_duration_seconds`, pool-stats (`go_redis_pool_*`).
+
+### 9.12.4. ClickHouse (Go: clickhouse-go) — Quotes Service
+
+Официальной OTel-обёртки нет → пишем ручной wrapper. Каждый `INSERT batch` оборачиваем в span:
+
+| Attribute | Пример |
+|---|---|
+| `db.system` | `clickhouse` |
+| `db.name` | `stockyard` |
+| `db.operation` | `INSERT` / `SELECT` |
+| `db.sql.table` | `quotes_ticks` |
+| `stockyard.batch.rows` | `1000` |
+| `stockyard.batch.bytes` | `~80000` |
+| `stockyard.batch.flush_reason` | `full` / `timeout` |
+
+Дополнения к существующему `stockyard_clickhouse_batch_size`:
+
+| Метрика | Тип | Лейблы |
+|---|---|---|
+| `stockyard_clickhouse_batch_size` (есть) | histogram | — |
+| `stockyard_clickhouse_batch_duration_seconds` | histogram | — |
+| `stockyard_clickhouse_insert_errors_total` | counter | `error_class` |
+| `stockyard_clickhouse_dropped_rows_total` | counter | `reason` |
+
+### 9.12.5. ClickHouse (Kotlin: clickhouse-jdbc) — Core Service
+
+Запросы свечей идут через clickhouse-jdbc и автоматически инструментируются OTel Java Agent (драйвер распознаётся как JDBC). Если spans не появляются — fallback на ручной wrapper вокруг `Statement.executeQuery`.
+
+### 9.12.6. Storage exporters → Prometheus
+
+Полный список — в [12-storage-operations §12.5](12-storage-operations.md#125-storage-exporters--prometheus). Ключевые метрики:
+
+| Источник | Endpoint | Что снимаем |
+|---|---|---|
+| `postgres_exporter` | `:9187/metrics` | `pg_up`, `pg_database_size_bytes`, `pg_stat_activity_count{state}`, `pg_stat_database_xact_commit/rollback`, `pg_locks_count`, `pg_stat_statements_*` |
+| `redis_exporter` | `:9121/metrics` | `redis_up`, `redis_connected_clients`, `redis_memory_used_bytes`, `redis_keyspace_hits/misses_total`, `redis_evicted_keys_total`, `redis_pubsub_channels`, `redis_commands_total{cmd}` |
+| ClickHouse builtin | `:9363/metrics` | `ClickHouseAsyncMetrics_*`, `ClickHouseMetrics_PartsActive/Query/Merge`, `ClickHouseProfileEvents_InsertedRows/FailedInsertQuery` |
+
+`postgres_exporter` подключается под отдельной ролью `monitoring` с `GRANT pg_monitor` (миграция V7).
+
+### 9.12.7. Health-метрика на уровне сервисов
+
+Каждый Stockyard-сервис экспортирует:
+
+```
+stockyard_storage_up{store="postgres"|"redis"|"clickhouse", service="core-service"|"quotes-service"|"api-gateway"}  =  0 | 1
+```
+
+Снимается в health-loop (раз в 5 сек), используя те же probes, что в [12. §12.1.3 / §12.2.5 / §12.3.4](12-storage-operations.md). Используется для Grafana-панели «Storage availability matrix» и для алертов 📦.
+
+### 9.12.8. Каталог storage-метрик и (📦 backlog) алертов
+
+| Категория | Метрики | 📦 Алерт (backlog) |
+|---|---|---|
+| PG saturation | `pg_stat_activity_count{state='active'} / pg_settings_max_connections` | > 80% за 5 мин |
+| PG locks | `pg_locks_count{mode='ExclusiveLock'}` | > 50 одновременно |
+| PG slow queries | `pg_stat_statements_mean_time_seconds` per query | top-5 > 100 мс |
+| Hikari saturation | `hikaricp_connections_pending` | > 0 за 1 мин |
+| Redis memory | `redis_memory_used_bytes / redis_memory_max_bytes` | > 90% |
+| Redis hit rate | `rate(redis_keyspace_misses[5m]) / rate(redis_keyspace_hits[5m])` | > 0.5 |
+| Redis evictions | `rate(redis_evicted_keys_total[5m])` | > 0 (тревожный сигнал на MVP) |
+| CH inserts | `rate(ClickHouseProfileEvents_InsertedRows[1m])` | < 30/sec при работающем драйвере |
+| CH parts | `ClickHouseMetrics_PartsActive` | > 1000 (приближение к `parts_to_throw_insert`) |
+| CH failed inserts | `rate(ClickHouseProfileEvents_FailedInsertQuery[5m])` | > 0 |
+| Storage up | `stockyard_storage_up == 0` | критический |
+
+Все алерты — 📦 Backlog (см. §9.8), просто фиксируем какой набор сигналов снимается.
+
+---
+
 ## Связанные документы
 
 - ⬅ [08. Масштабирование и производительность](08-scaling.md)
 - ➡ [10. Ключевые сценарии](10-scenarios.md)
+- ➡ [12. Эксплуатация уровня хранения](12-storage-operations.md) — операционная сторона storage layer.

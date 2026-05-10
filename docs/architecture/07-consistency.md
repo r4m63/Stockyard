@@ -199,7 +199,7 @@ UNIQUE (user_id, idempotency_key)
 sequenceDiagram
     participant M as Mobile
     participant G as Gateway
-    participant D as DB Service
+    participant D as Core Service
     participant P as PostgreSQL
 
     M ->> G: POST /orders {Idempotency-Key: K}
