@@ -166,12 +166,13 @@ Idempotency-Key: 9c44b7e2-...
 
 → 201 Created
 {
-  "orderId": "o_xyz789",
-  "status": "EXECUTED",
-  "ticker": "SBER",
-  "side": "BUY",
-  "qty": 10,
-  "price": 285.70,
+  "orderId":    "o_xyz789",
+  "status":     "EXECUTED",
+  "ticker":     "SBER",
+  "side":       "BUY",
+  "qty":        10,
+  "priceCents": 28570,                  # цена в копейках; деньги — Long cents (CLAUDE.md)
+  "createdAt":  "...",
   "executedAt": "..."
 }
 ```
@@ -401,7 +402,12 @@ Mobile ──[5s timeout]──► Gateway ──[2s timeout]──► Core Serv
 | `INVALID_REFRESH_TOKEN` | 401 | gateway (refresh) — подпись, exp, либо revoked в Redis |
 | `STORAGE_UNAVAILABLE` | 503 | gateway, когда core недоступен или PG/Redis fail |
 | `NOT_IMPLEMENTED` | 501 | временно — для эндпоинтов, ждущих реализации |
-| `INSUFFICIENT_FUNDS`, `INVALID_TICKER`, `IDEMPOTENCY_CONFLICT` | 409/422 | order-flow, TASK-006+ |
+| `INVALID_TICKER` | 422 | core, тикер не в каталоге instruments (order-flow, TASK-006) |
+| `INVALID_QUANTITY` | 422 | core, qty ≤ 0 или > 1_000_000 (order-flow, TASK-006) |
+| `INSUFFICIENT_FUNDS` | 422 | core (BUY с balance < cost); details: `requiredCents`, `availableCents` |
+| `INSUFFICIENT_POSITION` | 422 | core (SELL с qty < requested); details: `requiredQty`, `availableQty` |
+| `NO_QUOTE_AVAILABLE` | 422 | core, нет цены в Redis для тикера (rare; см. DevPriceFixture / TASK-008) |
+| `IDEMPOTENCY_CONFLICT` | 409 | core, тот же Idempotency-Key с другим body |
 
 ### Retry policy
 
