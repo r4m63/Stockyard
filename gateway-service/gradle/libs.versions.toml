@@ -1,0 +1,68 @@
+# Stockyard gateway-service — version catalog.
+# См. ADR-009: single-module per service, версии локальные.
+
+[versions]
+kotlin = "2.0.21"
+ktor = "2.3.13"
+kotlinx-coroutines = "1.9.0"
+kotlinx-serialization = "1.7.3"
+logback = "1.5.12"
+logstash-encoder = "8.0"
+java-jwt = "4.4.0"
+lettuce = "6.4.1.RELEASE"
+commons-pool2 = "2.12.0"
+otel = "1.43.0"
+otel-instrumentation = "2.9.0"  # used by Dockerfile ARG OTEL_AGENT_VERSION; keep in sync
+junit-jupiter = "5.11.3"
+testcontainers = "1.20.3"
+kotest = "5.9.1"
+mockk = "1.13.13"
+awaitility = "4.2.2"
+
+[libraries]
+ktor-server-core                = { module = "io.ktor:ktor-server-core-jvm",                version.ref = "ktor" }
+ktor-server-netty               = { module = "io.ktor:ktor-server-netty-jvm",               version.ref = "ktor" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation-jvm", version.ref = "ktor" }
+ktor-server-status-pages        = { module = "io.ktor:ktor-server-status-pages-jvm",        version.ref = "ktor" }
+ktor-server-call-logging        = { module = "io.ktor:ktor-server-call-logging-jvm",        version.ref = "ktor" }
+ktor-server-auth                = { module = "io.ktor:ktor-server-auth-jvm",                version.ref = "ktor" }
+ktor-server-auth-jwt            = { module = "io.ktor:ktor-server-auth-jwt-jvm",            version.ref = "ktor" }
+ktor-server-websockets          = { module = "io.ktor:ktor-server-websockets-jvm",          version.ref = "ktor" }
+ktor-server-cors                = { module = "io.ktor:ktor-server-cors-jvm",                version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json-jvm", version.ref = "ktor" }
+
+ktor-client-core                = { module = "io.ktor:ktor-client-core-jvm",                version.ref = "ktor" }
+ktor-client-cio                 = { module = "io.ktor:ktor-client-cio-jvm",                 version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation-jvm", version.ref = "ktor" }
+
+kotlinx-serialization-json      = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+kotlinx-coroutines-core         = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core",     version.ref = "kotlinx-coroutines" }
+
+logback-classic                 = { module = "ch.qos.logback:logback-classic",       version.ref = "logback" }
+logstash-encoder                = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstash-encoder" }
+
+java-jwt                        = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
+lettuce-core                    = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
+commons-pool2                   = { module = "org.apache.commons:commons-pool2", version.ref = "commons-pool2" }
+
+otel-bom                        = { module = "io.opentelemetry:opentelemetry-bom",          version.ref = "otel" }
+otel-api                        = { module = "io.opentelemetry:opentelemetry-api" }
+otel-sdk                        = { module = "io.opentelemetry:opentelemetry-sdk" }
+otel-exporter-otlp              = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
+
+junit-jupiter                   = { module = "org.junit.jupiter:junit-jupiter",       version.ref = "junit-jupiter" }
+testcontainers-core             = { module = "org.testcontainers:testcontainers",     version.ref = "testcontainers" }
+testcontainers-junit            = { module = "org.testcontainers:junit-jupiter",      version.ref = "testcontainers" }
+
+ktor-server-test-host           = { module = "io.ktor:ktor-server-test-host-jvm",     version.ref = "ktor" }
+ktor-client-content-negotiation-test = { module = "io.ktor:ktor-client-content-negotiation-jvm", version.ref = "ktor" }
+ktor-client-websockets          = { module = "io.ktor:ktor-client-websockets-jvm",    version.ref = "ktor" }
+
+kotest-assertions               = { module = "io.kotest:kotest-assertions-core-jvm",  version.ref = "kotest" }
+mockk                           = { module = "io.mockk:mockk",                        version.ref = "mockk" }
+awaitility-kotlin               = { module = "org.awaitility:awaitility-kotlin",      version.ref = "awaitility" }
+
+[plugins]
+kotlin-jvm           = { id = "org.jetbrains.kotlin.jvm",                       version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization",      version.ref = "kotlin" }
+ktor                 = { id = "io.ktor.plugin",                                 version.ref = "ktor" }
