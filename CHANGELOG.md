@@ -19,6 +19,29 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+- Core Service (Kotlin/Ktor) — internal HTTP сервис на `:8080` (host `:8081`):
+  - `GET /health/live` всегда `200 {"status":"UP"}`.
+  - `GET /health/ready` проверяет PostgreSQL (`SELECT 1`) и Redis (`PING`) как блокирующие; ClickHouse info-only (DOWN не делает unhealthy).
+  - `GET /metrics` — Prometheus exposition: JVM memory/GC/threads, processor, HikariCP pool, Ktor HTTP RED-метрики.
+  - 7 internal stub-эндпоинтов (`POST /internal/{users,auth,orders}`, `GET /internal/users/{id}/{orders,portfolio}`, `GET /internal/instruments`, `GET /internal/quotes/{ticker}/history`) возвращают `501 NOT_IMPLEMENTED` в едином формате `{"error":{"code","message","details"}}`. Полная реализация — TASK-005..008. (TASK-004)
+- Programmatic Flyway-bootstrap: миграции V1–V7 применяются в `Application.module()` до открытия HTTP-сокета; падение миграции → fail-fast старт. (TASK-004)
+- Connection pools для PostgreSQL (HikariCP, 50 соединений, `statement_timeout=3s`, `application_name=core-service` через `connectionInitSql`), Redis (Lettuce + `GenericObjectPool` maxTotal=32, выделенный pub/sub connection), ClickHouse (HikariCP, 8 соединений, готов для TASK-008 SELECT свечей). (TASK-004)
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+---
+
+## [0.2.0] - 2026-05-11
+
+### Added
 - Уровень хранения данных «из коробки»: PostgreSQL 16 + Redis 7 + ClickHouse 24 + Prometheus с postgres/redis exporters поднимаются одной командой `docker compose up -d`. Конфиги, healthchecks, ресурсные лимиты и cron-скрипт бэкапа PG. (TASK-001)
 - PostgreSQL-схема: 7 Flyway-миграций в `core-service/src/main/resources/db/migration/` — `users`, `accounts`, `instruments` с DML 50 тикеров MOEX, `orders` с `UNIQUE(user_id, idempotency_key)`, `positions`, `transactions` (audit), индекс `idx_orders_user_ticker`, `pg_stat_statements` + read-only роль `monitoring` для exporter'а. (TASK-001)
 - ClickHouse-схема: `quotes_ticks` (MergeTree partition by month + TTL 6 мес.) + Materialized Views `quotes_candles_1m`/`_1h` для свечей. Загружается через `/docker-entrypoint-initdb.d/`. (TASK-001)
@@ -59,5 +82,6 @@ Compare links — обновляются автоматически /committer r
 Замени <org>/<repo> на реальный путь после публикации репозитория.
 -->
 
-[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/r4m63/Stockyard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/r4m63/Stockyard/releases/tag/v0.1.0

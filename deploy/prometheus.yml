@@ -33,6 +33,14 @@ scrape_configs:
     static_configs:
       - targets: [gateway:8080]
 
+  # Core Service (Kotlin/Ktor). /metrics реализован в TASK-004 через
+  # MicrometerMetrics + PrometheusMeterRegistry — собирает JVM, GC, threads,
+  # CPU, Hikari pool, Ktor HTTP RED метрики.
+  - job_name: core-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: [core-service:8080]
+
   # OpenTelemetry Collector — Prometheus exporter (если настроен).
   - job_name: otel_collector
     static_configs:
