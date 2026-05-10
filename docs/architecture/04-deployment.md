@@ -1,8 +1,6 @@
 # 04. Развёртывание и топология
 
-## Назначение
-
-Описать **физическое развёртывание** системы: как процессы маппятся на хосты, Docker-контейнеры, сети и порты.
+Как процессы маппятся на хосты, Docker-контейнеры, сети и порты.
 
 ---
 
@@ -14,7 +12,7 @@
 4. **Приватная сеть** для всего, кроме Gateway — никаких прямых обращений к БД и сервисам извне.
 5. **Stateful компоненты** (PG, Redis, CH) — отдельные именованные тома Docker для персистентности.
 
-> ### ⚠️ Хостовая ОС: ограничение для macOS-разработчиков
+> ### Хостовая ОС: ограничение для macOS-разработчиков
 >
 > C-драйвер — это **Linux kernel module**, его нельзя `insmod` на macOS или нативной Windows.
 > Команда обязана заранее договориться, кто работает на какой ОС. Возможные варианты:
@@ -37,30 +35,30 @@
 
 Для разработки на ноутбуке.
 
-```mermaid
-graph TB
-    subgraph Host["💻 Developer machine"]
-        subgraph Docker["docker-compose"]
-            GW["api-gateway<br/>:8080"]
-            CoreSvc["core-service<br/>:8081"]
-            QSvc["quotes-service<br/>:8082"]
-            PG[("postgres:16<br/>:5432")]
-            Rds[("redis:7<br/>:6379")]
-            CH[("clickhouse:24<br/>:8123, :9000")]
-            OTC["otel-collector<br/>:4317"]
-        end
-
-        Drv["/dev/stockyard<br/>(host)"]
-        Sim["load-simulator<br/>(host process)"]
-        Mobile["📱 Android emulator<br/>(host)"]
-    end
-
-    Drv -->|bind mount| QSvc
-    Mobile --> GW
-    Sim --> GW
-
-    style Host fill:#f5f5f5
-    style Docker fill:#dae8fc
+```
+   ╔══════════════════════════════ Developer machine ══════════════════════════╗
+   ║                                                                           ║
+   ║  Android emulator ──▶ │                                                   ║
+   ║  load-simulator ────▶ │                                                   ║
+   ║                       ▼                                                   ║
+   ║  ┌────────────────────────────────────────────────────────────────────┐   ║
+   ║  │ docker-compose                                                     │   ║
+   ║  │                                                                    │   ║
+   ║  │  api-gateway :8080 ──▶ core-service :8081                          │   ║
+   ║  │       │                                                            │   ║
+   ║  │       └──▶ redis :6379       quotes-service :8082                  │   ║
+   ║  │       │                              │                             │   ║
+   ║  │       │                              ├──▶ redis                    │   ║
+   ║  │       │                              └──▶ clickhouse :8123,:9000   │   ║
+   ║  │       │                                                            │   ║
+   ║  │  core-service ──▶ postgres :5432                                   │   ║
+   ║  │                                                                    │   ║
+   ║  │  otel-collector :4317  ◀── (OTLP from all services)                │   ║
+   ║  └────────────────────────────────────────────────────────────────────┘   ║
+   ║                                       ▲                                   ║
+   ║                                       │ bind mount  --device=             ║
+   ║                            /dev/stockyard  (host)                         ║
+   ╚═══════════════════════════════════════════════════════════════════════════╝
 ```
 
 **Особенности:**
@@ -72,34 +70,38 @@ graph TB
 
 Для запуска демо на одной VM/сервере с TLS.
 
-```mermaid
-graph TB
-    Internet((Internet))
-
-    subgraph Host["🖥️ Single VM (Linux)"]
-        Nginx["nginx<br/>:443 (TLS)<br/>:80 → :443 redirect"]
-
-        subgraph Docker2["docker-compose"]
-            GW["api-gateway<br/>(2 replicas)<br/>:8080"]
-            CoreSvc["core-service<br/>:8081"]
-            QSvc["quotes-service<br/>:8082"]
-            PG[("postgres")]
-            Rds[("redis")]
-            CH[("clickhouse")]
-            OTC["otel-collector"]
-            Jaeger["jaeger<br/>:16686"]
-            Prom["prometheus<br/>:9090"]
-            Graf["grafana<br/>:3000"]
-        end
-
-        Drv["/dev/stockyard"]
-    end
-
-    Internet -->|HTTPS, WSS| Nginx
-    Nginx --> GW
-    Drv --> QSvc
-
-    style Host fill:#f5f5f5
+```
+                ╭───────────╮
+                │  Internet │
+                ╰─────┬─────╯
+                      │ HTTPS, WSS
+                      ▼
+   ╔══════════════════════════════════════════ Single VM (Linux) ═════════════╗
+   ║                                                                          ║
+   ║   ┌──────────────────────────┐                                           ║
+   ║   │ nginx                    │                                           ║
+   ║   │ :443 (TLS)               │                                           ║
+   ║   │ :80 → :443 redirect      │                                           ║
+   ║   └────────────┬─────────────┘                                           ║
+   ║                │                                                         ║
+   ║  ╔═════════════│════════════════ docker-compose ═══════════════════════╗ ║
+   ║  ║             ▼                                                       ║ ║
+   ║  ║   api-gateway × 2 (:8080)                                           ║ ║
+   ║  ║          │                                                          ║ ║
+   ║  ║          └──▶ core-service :8081 ──▶ postgres                       ║ ║
+   ║  ║                       │                                             ║ ║
+   ║  ║                       └──▶ redis                                    ║ ║
+   ║  ║                       └──▶ clickhouse                               ║ ║
+   ║  ║                                                                     ║ ║
+   ║  ║   quotes-service :8082 ──▶ redis · clickhouse                       ║ ║
+   ║  ║          ▲                                                          ║ ║
+   ║  ║          │ /dev/stockyard                                           ║ ║
+   ║  ║                                                                     ║ ║
+   ║  ║   Observability stack:                                              ║ ║
+   ║  ║   otel-collector ──▶ jaeger :16686 · prometheus :9090 ──▶ grafana   ║ ║
+   ║  ║                                                          :3000      ║ ║
+   ║  ╚═════════════════════════════════════════════════════════════════════╝ ║
+   ╚══════════════════════════════════════════════════════════════════════════╝
 ```
 
 **Особенности:**
@@ -111,90 +113,79 @@ graph TB
 
 > Не реализуется в MVP. Описано как точка эволюции для отчёта/защиты — показать, как архитектура масштабируется при росте нагрузки.
 
-```mermaid
-graph TB
-    Internet((Internet))
-
-    subgraph Edge["🌐 Edge"]
-        LB["L4 Load Balancer<br/>(haproxy / nginx)"]
-    end
-
-    subgraph App["🟢 App tier"]
-        GW1["api-gateway-1"]
-        GW2["api-gateway-2"]
-        CoreSvc["core-service<br/>(2 replicas)"]
-        QSvc["quotes-service"]
-    end
-
-    subgraph Data["🟡 Data tier"]
-        PgB["pgbouncer"]
-        PG[("PostgreSQL<br/>primary")]
-        PGr[("PostgreSQL<br/>read replica")]
-        Rds[("Redis")]
-        CH[("ClickHouse")]
-    end
-
-    subgraph Driver["🔴 Driver tier"]
-        Drv["C Driver host"]
-    end
-
-    Internet --> LB
-    LB --> GW1 & GW2
-    GW1 & GW2 --> CoreSvc
-    GW1 & GW2 --> Rds
-    CoreSvc --> PgB --> PG
-    CoreSvc --> PGr
-    CoreSvc --> Rds
-    CoreSvc --> CH
-    QSvc --> Rds
-    QSvc --> CH
-    Drv --> QSvc
+```
+                          ╭───────────╮
+                          │  Internet │
+                          ╰─────┬─────╯
+                                ▼
+   ── Edge ─────────────────────────────────────────────────────────
+                   ┌─────────────────────────────────┐
+                   │ L4 Load Balancer (haproxy/nginx)│
+                   └─────────┬─────────────┬─────────┘
+                             │             │
+   ── App tier ──────────────│─────────────│────────────────────────
+                             ▼             ▼
+                       ┌───────────┐ ┌───────────┐
+                       │ gateway-1 │ │ gateway-2 │
+                       └─────┬─────┘ └─────┬─────┘
+                             │             │
+                             └──────┬──────┘
+                                    │
+                  ┌─────────────────┼────────────────┐
+                  ▼                 ▼                ▼
+            ┌──────────────┐  ┌─────────┐     ┌──────────────────┐
+            │ core-service │  │  Redis  │     │ quotes-service   │
+            │ (2 replicas) │  └─────────┘     └────┬────┬────────┘
+            └───┬──────────┘       ▲               │    │
+                │                  │               │    │
+                ├──▶ pgbouncer ──▶ PG primary      │    │
+                ├──▶ PG read replica               │    │
+                ├──▶ Redis ────────────────────────┘    │
+                └──▶ ClickHouse ◀───────────────────────┘
+                                                  ▲
+   ── Driver tier ─────────────────────────────── │ ───────────────
+                                          ┌───────┴───────┐
+                                          │ C Driver host │
+                                          └───────────────┘
 ```
 
 ---
 
 ## 4.3. Сетевая топология (Dev/Demo)
 
-```mermaid
-graph LR
-    subgraph PublicNet["public bridge<br/>(host network)"]
-        Nginx["nginx :443"]
-    end
+```
+   ── public bridge (host network) ────────────────────────────────────
+        ┌───────────────┐
+        │  nginx :443   │
+        └───────┬───────┘
+                │
+   ── frontend net (docker bridge) ────────────────────────────────────
+                ▼
+        ┌───────────────┐
+        │  api-gateway  │
+        └────┬──────┬───┘
+             │      │
+   ── backend net (docker bridge) ─────────────────────────────────────
+             ▼      ▼
+       ┌──────────┐ ┌────────┐
+       │   core   │ │ redis  │  ◀── quotes ──┐
+       │  service │ └────────┘               │
+       └─┬──┬──┬──┘                          │
+         │  │  │                             │
+         ▼  ▼  ▼                             │
+   ┌────────┐ ┌────────────┐                 │
+   │postgres│ │ clickhouse │ ◀───────────────┘
+   └────────┘ └────────────┘
 
-    subgraph FrontNet["frontend net<br/>(docker bridge)"]
-        GW["api-gateway"]
-    end
-
-    subgraph BackNet["backend net<br/>(docker bridge)"]
-        CoreSvc["core-service"]
-        QSvc["quotes-service"]
-        PG[("postgres")]
-        Rds[("redis")]
-        CH[("clickhouse")]
-    end
-
-    subgraph TelNet["telemetry net"]
-        OTC["otel-collector"]
-        Jaeger["jaeger"]
-        Prom["prometheus"]
-        Graf["grafana"]
-    end
-
-    Nginx --> GW
-    GW --> CoreSvc
-    GW --> Rds
-    CoreSvc --> PG
-    CoreSvc --> Rds
-    CoreSvc --> CH
-    QSvc --> Rds
-    QSvc --> CH
-
-    GW -.-> OTC
-    CoreSvc -.-> OTC
-    QSvc -.-> OTC
-    OTC --> Jaeger
-    OTC --> Prom
-    Prom --> Graf
+   . . . (OTLP, пунктирные ссылки)
+   gateway / core / quotes
+                       │
+                       ▼
+   ── telemetry net ────────────────────────────────────────
+          ┌──────────────────┐
+          │ otel-collector   │──▶ jaeger
+          │                  │──▶ prometheus ──▶ grafana
+          └──────────────────┘
 ```
 
 **Изоляция:**
@@ -319,13 +310,16 @@ sudo rmmod stockyard_driver
 
 ## 4.8. CI/CD (минимальный)
 
-```mermaid
-graph LR
-    Dev["💻 git push"] --> CI["🔧 CI<br/>(GitHub Actions /<br/>GitLab CI)"]
-    CI --> Build["build<br/>docker images"]
-    CI --> Test["unit + integration<br/>tests"]
-    Build & Test --> Reg["📦 docker registry"]
-    Reg --> Deploy["📤 deploy<br/>on demo host"]
+```
+   ┌──────────┐    ┌──────────────────┐    ┌────────────────┐
+   │ git push │───▶│ CI               │───▶│ build          │──┐
+   └──────────┘    │ GitHub Actions / │    │ docker images  │  │
+                   │ GitLab CI        │    └────────────────┘  │
+                   │                  │    ┌────────────────┐  ├──▶ ┌──────────┐  ┌────────────┐
+                   │                  │───▶│ unit +         │──┘    │ docker   │─▶│ deploy on  │
+                   └──────────────────┘    │ integration    │       │ registry │  │ demo host  │
+                                           │ tests          │       └──────────┘  └────────────┘
+                                           └────────────────┘
 ```
 
 Минимум для MVP:

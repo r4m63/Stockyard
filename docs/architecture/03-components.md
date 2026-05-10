@@ -1,10 +1,6 @@
 # 03. Внутреннее устройство сервисов
 
-## Назначение
-
-Раскрыть **внутреннее устройство каждого микросервиса** — на какие модули/компоненты он делится, как они связаны и где какой код живёт.
-
-Это уровень детализации, на котором разработчик может начать кодить, понимая, какой код в какой пакет/модуль попадает.
+На какие модули делится каждый микросервис, как они связаны, где какой код живёт. Уровень детализации, на котором уже можно начинать кодить.
 
 ---
 
@@ -15,37 +11,39 @@
 
 ### Компонентная диаграмма
 
-```mermaid
-graph TB
-    subgraph GW["API Gateway (Kotlin + Ktor)"]
-        Router["<b>HTTP Router</b><br/>Ktor routing"]
-        WSHub["<b>WS Hub</b><br/>connection registry,<br/>fanout"]
-        Auth["<b>Auth Module</b><br/>JWT validation,<br/>refresh"]
-        RateLim["<b>Rate Limiter</b><br/>per-user quota"]
-        DBClient["<b>Core Service Client</b><br/>HTTP/JSON"]
-        RedisClient["<b>Redis Client</b><br/>Pub/Sub<br/>+ HASH read"]
-        TelemHook["<b>Telemetry Hook</b><br/>OTel SDK"]
-    end
-
-    Mobile["📱 Mobile"]
-    CoreSvc["Core Service"]
-    Redis[("Redis")]
-    OTel["OTel"]
-
-    Mobile -->|REST| Router
-    Mobile -->|WS upgrade| WSHub
-    Router --> Auth
-    Router --> RateLim
-    Router --> DBClient
-    WSHub --> Auth
-    WSHub --> RedisClient
-    Router --> RedisClient
-    DBClient --> CoreSvc
-    RedisClient --> Redis
-    Auth -.-> TelemHook
-    Router -.-> TelemHook
-    WSHub -.-> TelemHook
-    TelemHook -.-> OTel
+```
+   Mobile ──REST──▶ ┌────────────────────────────────────────────────┐
+   Mobile ──WS───▶  │   API Gateway  (Kotlin + Ktor)                 │
+                    │                                                │
+                    │   ┌──────────────┐    ┌──────────────────┐     │
+                    │   │ HTTP Router  │◀──▶│ Auth Module      │     │
+                    │   │ Ktor routing │    │ JWT validate,    │     │
+                    │   └──────┬───────┘    │ refresh          │     │
+                    │          │            └──────────────────┘     │
+                    │          │            ┌──────────────────┐     │
+                    │          ├───────────▶│ Rate Limiter     │     │
+                    │          │            │ per-user quota   │     │
+                    │          │            └──────────────────┘     │
+                    │          │                                     │
+                    │          ▼                                     │
+                    │   ┌──────────────┐    ┌──────────────────┐     │
+                    │   │ WS Hub       │    │ Core Service     │     │
+                    │   │ conn reg,    │    │ Client (HTTP)    │─┼──┐
+                    │   │ fanout       │    └──────────────────┘ │  │
+                    │   └──────┬───────┘                         │  │
+                    │          │                                 │  │
+                    │          ▼                                 │  │
+                    │   ┌──────────────┐                         │  │
+                    │   │ Redis Client │─────────────────────────┼──┼──┐
+                    │   │ Pub/Sub +    │                         │  │  │
+                    │   │ HASH read    │                         │  │  │
+                    │   └──────┬───────┘                         │  │  │
+                    │          │                                 │  │  │
+                    │   . . . Telemetry Hook (OTel SDK) . . .    │  │  │
+                    └──────────┼─────────────────────────────────┘  │  │
+                               │                                    │  │
+                               ▼                                    ▼  ▼
+                            OTel                         Core Service / Redis
 ```
 
 ### Компоненты
@@ -97,53 +95,39 @@ gateway/
 
 ### Компонентная диаграмма
 
-```mermaid
-graph TB
-    subgraph CoreSvc["Core Service (Kotlin + Ktor)"]
-        IntAPI["<b>Internal HTTP API</b><br/>Ktor routing"]
-
-        subgraph Domain["Domain layer"]
-            UserSvc["<b>User Service</b><br/>register, auth"]
-            OrderSvc["<b>Order Service</b><br/>place, list,<br/>execute"]
-            PortfolioSvc["<b>Portfolio Service</b><br/>positions,<br/>balance"]
-            InstrSvc["<b>Instrument Service</b><br/>каталог"]
-        end
-
-        subgraph Repos["Repository layer (raw SQL)"]
-            UserRepo["UserRepo"]
-            OrderRepo["OrderRepo"]
-            PositionRepo["PositionRepo"]
-            TxnRepo["TxnRepo"]
-            InstrRepo["InstrumentRepo"]
-        end
-
-        TxMgr["<b>TransactionManager</b><br/>JDBC + HikariCP"]
-        QuotesPort["<b>Quotes Port</b><br/>Redis HGET<br/>+ ClickHouse SELECT"]
-    end
-
-    GW["Gateway"]
-    PG[("PostgreSQL")]
-    Rds[("Redis")]
-    CH[("ClickHouse")]
-
-    GW -->|HTTP| IntAPI
-    IntAPI --> UserSvc
-    IntAPI --> OrderSvc
-    IntAPI --> PortfolioSvc
-    IntAPI --> InstrSvc
-
-    UserSvc --> UserRepo
-    OrderSvc --> OrderRepo
-    OrderSvc --> PositionRepo
-    OrderSvc --> TxnRepo
-    OrderSvc --> QuotesPort
-    PortfolioSvc --> PositionRepo
-    InstrSvc --> InstrRepo
-
-    UserRepo & OrderRepo & PositionRepo & TxnRepo & InstrRepo --> TxMgr
-    TxMgr -->|JDBC| PG
-    QuotesPort --> Rds
-    QuotesPort --> CH
+```
+   Gateway ──HTTP──▶ ┌─────────────────────────────────────────────────┐
+                     │  Core Service  (Kotlin + Ktor)                  │
+                     │                                                 │
+                     │   Internal HTTP API  (Ktor routing)             │
+                     │           │                                     │
+                     │           ▼                                     │
+                     │   ╔═════════════ Domain layer ═════════════╗    │
+                     │   ║ UserService     OrderService           ║    │
+                     │   ║ (register,      (place, list, execute) ║    │
+                     │   ║  auth)                                 ║    │
+                     │   ║                                        ║    │
+                     │   ║ PortfolioService   InstrumentService   ║    │
+                     │   ║ (positions,        (каталог)           ║    │
+                     │   ║  balance)                              ║    │
+                     │   ╚════════════════════════════════════════╝    │
+                     │           │                                     │
+                     │           ▼                                     │
+                     │   ╔════════ Repository layer (raw SQL) ════╗    │
+                     │   ║  UserRepo · OrderRepo · PositionRepo · ║    │
+                     │   ║  TxnRepo · InstrumentRepo              ║    │
+                     │   ╚════════════════════════════════════════╝    │
+                     │           │                                     │
+                     │           ▼                                     │
+                     │   ┌──────────────────────┐    ┌──────────────┐  │
+                     │   │ TransactionManager   │    │ QuotesPort   │  │
+                     │   │ JDBC + HikariCP      │    │ Redis HGET   │  │
+                     │   └────────┬─────────────┘    │ + CH SELECT  │  │
+                     │            │                  └──┬───────┬───┘  │
+                     └────────────┼─────────────────────┼───────┼──────┘
+                                  │ JDBC                │       │
+                                  ▼                     ▼       ▼
+                              PostgreSQL              Redis   ClickHouse
 ```
 
 ### Компоненты
@@ -209,30 +193,38 @@ Stream-процессор: читает поток тиков из C-драйв�
 
 ### Компонентная диаграмма
 
-```mermaid
-graph TB
-    subgraph QSvc["Quotes Service (Go)"]
-        Reader["<b>Driver Reader</b><br/>open /dev/stockyard,<br/>read loop"]
-        Parser["<b>Tick Parser</b><br/>binary → struct"]
-        Fanout["<b>Fanout</b><br/>goroutines per sink"]
-
-        RedisPub["<b>Redis Publisher</b><br/>PUBLISH +<br/>HSET +<br/>XADD"]
-        CHWriter["<b>ClickHouse Batcher</b><br/>буфер 1 сек,<br/>batch INSERT"]
-
-        Health["<b>Health/Metrics</b><br/>HTTP :8080<br/>/healthz, /metrics"]
-    end
-
-    Drv["/dev/stockyard"]
-    Rds[("Redis")]
-    CH[("ClickHouse")]
-
-    Drv --> Reader
-    Reader --> Parser
-    Parser --> Fanout
-    Fanout --> RedisPub
-    Fanout --> CHWriter
-    RedisPub --> Rds
-    CHWriter --> CH
+```
+   /dev/stockyard ───▶ ┌────────────────────────────────────────────────┐
+                       │  Quotes Service (Go)                           │
+                       │                                                │
+                       │  ┌──────────────┐   ┌──────────────┐           │
+                       │  │ Driver       │──▶│ Tick Parser  │           │
+                       │  │ Reader       │   │ binary       │           │
+                       │  │ open /dev/   │   │ → struct     │           │
+                       │  │ read loop    │   └──────┬───────┘           │
+                       │  └──────────────┘          │                   │
+                       │                            ▼                   │
+                       │                     ┌──────────────┐           │
+                       │                     │ Fanout       │           │
+                       │                     │ goroutines   │           │
+                       │                     │ per sink     │           │
+                       │                     └──┬────────┬──┘           │
+                       │                        │        │              │
+                       │                        ▼        ▼              │
+                       │           ┌────────────────┐  ┌─────────────┐  │
+                       │           │ Redis Pub      │  │ CH Batcher  │  │
+                       │           │ PUBLISH+HSET+  │  │ буфер 1 сек │  │
+                       │           │ XADD           │  │ batch INSERT│  │
+                       │           └───────┬────────┘  └──────┬──────┘  │
+                       │                   │                  │         │
+                       │  ┌─────────────────────────────────┐ │         │
+                       │  │ Health/Metrics :8080            │ │         │
+                       │  │ /healthz, /metrics              │ │         │
+                       │  └─────────────────────────────────┘ │         │
+                       └──────────────────┼───────────────────┼─────────┘
+                                          │                   │
+                                          ▼                   ▼
+                                        Redis             ClickHouse
 ```
 
 ### Компоненты
@@ -279,31 +271,31 @@ quotes-service/
 
 ### Компонентная диаграмма
 
-```mermaid
-graph TB
-    subgraph Sim["Load Simulator (Kotlin coroutines / Go / Python asyncio)"]
-        CLI["<b>CLI / Config</b><br/>--users, --duration,<br/>--scenario"]
-        ScenarioRunner["<b>Scenario Runner</b><br/>оркестрация"]
-        UserPool["<b>Virtual User Pool</b><br/>N корутин,<br/>каждая = клиент"]
-        HttpClient["<b>HTTP Client</b><br/>auth, orders,<br/>portfolio"]
-        WsClient["<b>WS Client</b><br/>подписка на тикеры,<br/>чтение тиков"]
-        Metrics["<b>Metrics Collector</b><br/>latency p50/p95/p99,<br/>error rate, RPS"]
-        Reporter["<b>Reporter</b><br/>console + OTel/<br/>Prometheus"]
-    end
-
-    GW["API Gateway"]
-    OTel["OTel"]
-
-    CLI --> ScenarioRunner
-    ScenarioRunner --> UserPool
-    UserPool --> HttpClient
-    UserPool --> WsClient
-    HttpClient -->|REST| GW
-    WsClient -->|WSS| GW
-    HttpClient --> Metrics
-    WsClient --> Metrics
-    Metrics --> Reporter
-    Reporter -.->|OTLP| OTel
+```
+   ┌─────────────────────────────────────────────────────────────────┐
+   │  Load Simulator  (Kotlin coroutines / Go / Python asyncio)      │
+   │                                                                 │
+   │  CLI / Config (--users, --duration, --scenario)                 │
+   │           │                                                     │
+   │           ▼                                                     │
+   │  Scenario Runner (оркестрация ramp-up / steady / ramp-down)     │
+   │           │                                                     │
+   │           ▼                                                     │
+   │  Virtual User Pool — N корутин, каждая = клиент                 │
+   │           │                                                     │
+   │           ├──▶ HTTP Client (auth, orders, portfolio) ──REST──┐  │
+   │           │                                                  │  │
+   │           └──▶ WS Client (subscribe, читать тики) ───WSS─────┤  │
+   │                          │                                   │  │
+   │                          ▼                                   │  │
+   │  Metrics Collector (latency p50/p95/p99, error rate, RPS)    │  │
+   │                          │                                   │  │
+   │                          ▼                                   │  │
+   │  Reporter (console + OTel/Prometheus) . . . OTLP . . .       │  │
+   └────────────────────────────────────┼─────────────────────────┼──┘
+                                        │                         │
+                                        ▼                         ▼
+                                      OTel                  API Gateway
 ```
 
 ### Компоненты
@@ -399,42 +391,36 @@ struct stockyard_tick {
 
 ### Архитектура: MVVM + Clean layers
 
-```mermaid
-graph TB
-    subgraph App["Android App (Kotlin + Jetpack Compose)"]
-        subgraph UI["UI layer (Compose)"]
-            Screens["Screens<br/>Login, Quotes, OrderForm,<br/>Portfolio, History"]
-            Comps["Reusable Composables<br/>QuoteCard, Chart, Button..."]
-        end
-
-        subgraph VM["ViewModel layer"]
-            QuotesVM["QuotesViewModel"]
-            OrdersVM["OrdersViewModel"]
-            PortfolioVM["PortfolioViewModel"]
-            AuthVM["AuthViewModel"]
-        end
-
-        subgraph Domain["Domain layer"]
-            UseCases["UseCases<br/>(PlaceOrder,<br/>SubscribeToTicker, ...)"]
-            Models["Domain models"]
-        end
-
-        subgraph Data["Data layer"]
-            Repos["Repositories<br/>(QuotesRepo, OrdersRepo, ...)"]
-            ApiClient["REST API client<br/>(OkHttp + Retrofit + kotlinx.serialization)"]
-            WsClient["WebSocket client<br/>(OkHttp WS)"]
-            LocalCache["Local cache<br/>(DataStore / Room — опц.)"]
-            JwtStore["JWT secure storage<br/>(EncryptedSharedPreferences)"]
-        end
-    end
-
-    Screens --> VM
-    VM --> UseCases
-    UseCases --> Repos
-    Repos --> ApiClient
-    Repos --> WsClient
-    Repos --> LocalCache
-    ApiClient --> JwtStore
+```
+   ┌─────────────────────────────────────────────────────────────────┐
+   │  Android App  (Kotlin + Jetpack Compose)                        │
+   │                                                                 │
+   │  ── UI layer (Compose) ──────────────────────────────────────   │
+   │     Screens: Login · Quotes · OrderForm · Portfolio · History   │
+   │     Reusable Composables: QuoteCard · Chart · Button …          │
+   │                          │                                      │
+   │                          ▼                                      │
+   │  ── ViewModel layer ─────────────────────────────────────────   │
+   │     QuotesVM · OrdersVM · PortfolioVM · AuthVM                  │
+   │                          │                                      │
+   │                          ▼                                      │
+   │  ── Domain layer ────────────────────────────────────────────   │
+   │     UseCases (PlaceOrder, SubscribeToTicker, …)                 │
+   │     Domain models                                               │
+   │                          │                                      │
+   │                          ▼                                      │
+   │  ── Data layer ──────────────────────────────────────────────   │
+   │     Repositories (QuotesRepo, OrdersRepo, …)                    │
+   │           │           │              │              │           │
+   │           ▼           ▼              ▼              ▼           │
+   │     REST API     WebSocket     Local Cache    JWT Secure        │
+   │     OkHttp +     OkHttp WS     DataStore /    Storage           │
+   │     Retrofit +                 Room (опц.)    (Encrypted        │
+   │     kotlinx                                    SharedPrefs)     │
+   │     .serialize                                                  │
+   │           ▲                                                     │
+   │           └─── reads JWT from secure storage ──────────────┐    │
+   └────────────────────────────────────────────────────────────┘    │
 ```
 
 ### Компоненты
@@ -494,40 +480,30 @@ android-app/
 
 ### Архитектура: Container / Presentational + Redux Toolkit
 
-```mermaid
-graph TB
-    subgraph App["React Native App (TypeScript)"]
-        subgraph Screens["Screens (Container components)"]
-            S1["LoginScreen"]
-            S2["QuotesScreen"]
-            S3["OrderFormScreen"]
-            S4["PortfolioScreen"]
-        end
-
-        subgraph Components["Presentational components"]
-            C1["QuoteCard"]
-            C2["Chart"]
-            C3["Button"]
-        end
-
-        subgraph State["Redux Toolkit"]
-            Slices["slices/<br/>auth, quotes,<br/>orders, portfolio"]
-            Thunks["async thunks<br/>(API calls)"]
-        end
-
-        subgraph DataLayer["Data layer"]
-            Api["API client<br/>(axios)"]
-            Ws["WebSocket client<br/>(reconnecting-websocket)"]
-            Storage["AsyncStorage<br/>(JWT)"]
-        end
-    end
-
-    Screens --> Components
-    Screens --> Slices
-    Slices --> Thunks
-    Thunks --> Api
-    Slices --> Ws
-    Api --> Storage
+```
+   ┌─────────────────────────────────────────────────────────────────┐
+   │  React Native App  (TypeScript)                                 │
+   │                                                                 │
+   │  ── Screens (Container components) ──────────────────────────   │
+   │     LoginScreen · QuotesScreen · OrderFormScreen ·              │
+   │     PortfolioScreen                                             │
+   │           │                              │                      │
+   │           │ render                       │ dispatch / select    │
+   │           ▼                              ▼                      │
+   │  ── Presentational ────────     ── Redux Toolkit ───────        │
+   │     QuoteCard · Chart ·           slices: auth, quotes,         │
+   │     Button                        orders, portfolio             │
+   │                                          │                      │
+   │                                          ▼                      │
+   │                                     async thunks (API calls)    │
+   │                                          │                      │
+   │                                          ▼                      │
+   │  ── Data layer ──────────────────────────────────────────────   │
+   │     API client          WebSocket client    AsyncStorage        │
+   │     (axios) ───reads───▶  (reconnecting-     (JWT)              │
+   │             JWT from       websocket)                           │
+   │                                                                 │
+   └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Компоненты

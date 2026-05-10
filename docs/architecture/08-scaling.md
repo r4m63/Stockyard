@@ -1,14 +1,12 @@
 # 08. Масштабирование и производительность
 
-## Назначение
+Целевые показатели нагрузки, расчёт capacity по компонентам, узкие места, стратегия горизонтального и вертикального масштабирования. Обоснование, почему архитектура держит 10 000 одновременных клиентов.
 
-Описать **целевые показатели нагрузки**, расчёт capacity по компонентам, узкие места и стратегию горизонтального/вертикального масштабирования. Обоснование, почему 10 000 одновременных клиентов архитектура держит.
-
-> ### 🎯 MVP must-have vs 📦 Backlog
+> ### MVP must-have vs 📦 Backlog
 >
 > Раздел описывает и текущее MVP-состояние, и план роста. Чтобы команда не пугалась объёма:
 >
-> - 🎯 **MVP (реализуем):** базовый расчёт нагрузки (§8.2), обязательные настройки (§8.5 «Обязательные»), backpressure WS (§8.7), доказательство SLO через Load Simulator (§8.9).
+> - MVP (реализуем): базовый расчёт нагрузки (§8.2), обязательные настройки (§8.5 «Обязательные»), backpressure WS (§8.7), доказательство SLO через Load Simulator (§8.9).
 > - 📦 **Backlog (для отчёта/защиты, не реализуем):** async order queue (§8.4.3), circuit breaker (§8.6), ZGC, HTTP/2, ETag, шардинг PG. Все такие пункты дополнительно помечены 📦 в заголовке.
 
 ---
@@ -105,21 +103,23 @@ Redis и ClickHouse даже не вспотеют — это **в тысячи 
 
 ### При увеличении CCU и RPS
 
-```mermaid
-graph TB
-    Start["Текущая нагрузка<br/>10к CCU, 500 RPS"]
-    L1["50к CCU<br/>2.5к RPS"]
-    L2["100к CCU<br/>5к ордеров/сек"]
-    L3["1М CCU<br/>50к ордеров/сек"]
-
-    Start -->|"масштабирование"| L1
-    L1 -->|"в этом месте<br/>ломается"| L2
-    L2 -->|"глубокая<br/>переработка"| L3
-
-    L1 --> B1["⚠️ FD limit Gateway<br/>→ 2-3 реплики"]
-    L2 --> B2["🔴 PostgreSQL writes<br/>→ async queue, replicas"]
-    L3 --> B3["🔴 Redis Pub/Sub<br/>→ Kafka"]
-    L3 --> B4["🔴 ClickHouse single node<br/>→ ClickHouse Cluster"]
+```
+   текущая нагрузка                FD limit Gateway
+   10к CCU, 500 RPS    ───────▶    → 2-3 реплики
+         │
+         │ масштабирование
+         ▼
+     50к CCU, 2.5к RPS  ─────▶    (всё ещё OK)
+         │
+         │ в этом месте ломается
+         ▼
+   100к CCU, 5к ордеров/сек  ─▶   PostgreSQL writes
+         │                       → async queue, replicas
+         │ глубокая переработка
+         ▼
+   1М CCU, 50к ордеров/сек  ──▶  Redis Pub/Sub  → Kafka
+                            ──▶  ClickHouse single node
+                                 → ClickHouse Cluster
 ```
 
 ### Карта узких мест
@@ -152,30 +152,28 @@ graph TB
 
 ### 8.4.2. Сценарий горизонтального масштабирования Gateway
 
-```mermaid
-graph TB
-    LB["L4 Load Balancer<br/>haproxy / nginx"]
-
-    subgraph GWs["API Gateway replicas"]
-        G1["GW-1<br/>10k WS"]
-        G2["GW-2<br/>10k WS"]
-        G3["GW-3<br/>10k WS"]
-    end
-
-    Rds[("Redis Pub/Sub")]
-    DB["Core Service"]
-
-    LB --> G1
-    LB --> G2
-    LB --> G3
-
-    Rds -->|"PUBLISH<br/>(каждый GW подписан)"| G1
-    Rds -->|"PUBLISH"| G2
-    Rds -->|"PUBLISH"| G3
-
-    G1 --> DB
-    G2 --> DB
-    G3 --> DB
+```
+                 ┌──────────────────────────┐
+                 │ L4 Load Balancer         │
+                 │ haproxy / nginx          │
+                 └────┬─────────┬─────────┬─┘
+                      │         │         │
+                      ▼         ▼         ▼
+   ── API Gateway replicas ────────────────────
+                  ┌────────┐┌────────┐┌────────┐
+                  │ GW-1   ││ GW-2   ││ GW-3   │
+                  │ 10k WS ││ 10k WS ││ 10k WS │
+                  └─┬────▲─┘└─┬────▲─┘└─┬────▲─┘
+                    │    │    │    │    │    │
+                    │    │ PUBLISH (каждый GW подписан)
+                    │    └────┴────┴────┴────┘
+                    │                   ▲
+                    │             ┌──────────────────┐
+                    │             │ Redis Pub/Sub    │
+                    ▼             └──────────────────┘
+              ┌──────────────┐
+              │ Core Service │
+              └──────────────┘
 ```
 
 **Свойства:**
@@ -189,29 +187,33 @@ graph TB
 
 Если ордеров > 1k/сек:
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant GW as Gateway
-    participant DB as Core Service
-    participant Q as Redis Stream
-    participant W as Worker
-
-    M ->> GW: POST /orders
-    GW ->> DB: validate + persist (PENDING)
-    DB ->> Q: XADD orders_queue {orderId}
-    DB -->> GW: 202 Accepted
-    GW -->> M: 202 Accepted (с orderId)
-
-    Note over W,Q: фоновый воркер
-    W ->> Q: XREADGROUP
-    W ->> DB: execute(orderId)<br/>list price, balance, position
-    DB ->> DB: TX: списать, обновить позицию, EXECUTED
-    DB -->> W: ok
-
-    Note over M: WS-уведомление об исполнении
-    M ->> GW: подписан на orders.events
-    GW -->> M: {type:"order.executed", orderId, price}
+```
+   Mobile      Gateway        Core          Redis Stream      Worker
+     │            │             │                 │             │
+     │ POST /orders             │                 │             │
+     │───────────▶│             │                 │             │
+     │            │ validate + persist (PENDING)  │             │
+     │            │────────────▶│                 │             │
+     │            │             │ XADD orders_queue {orderId}   │
+     │            │             │────────────────▶│             │
+     │            │ 202 Accepted│                 │             │
+     │            │◀────────────│                 │             │
+     │ 202 Accepted (с orderId) │                 │             │
+     │◀───────────│             │                 │             │
+     │            │             │                 │             │
+   . . . фоновый воркер . . .                                    │
+     │            │             │                 │ XREADGROUP  │
+     │            │             │                 │◀────────────│
+     │            │             │ execute(orderId)              │
+     │            │             │◀──────────────────────────────│
+     │            │             │ TX: списать, обновить позицию, EXECUTED
+     │            │             │──────────────────────────────▶│ ok
+     │            │             │                               │
+   . . . WS-уведомление об исполнении . . .                     │
+     │ подписан на orders.events│                               │
+     │───────────▶│             │                               │
+     │ {type:"order.executed", orderId, price}                  │
+     │◀───────────│             │                               │
 ```
 
 В MVP можно обойтись без этого, но в архитектуру заложено как опция.

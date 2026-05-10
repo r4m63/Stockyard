@@ -1,38 +1,37 @@
 # 06. Архитектура данных
 
-## Назначение
-
-Описать **где какие данные хранятся**, как структурированы, как живут во времени и почему выбран именно такой бэкенд под каждый класс данных.
+Где какие данные хранятся, как структурированы, как живут во времени. Почему под каждый класс данных выбран именно этот бэкенд.
 
 ---
 
 ## 6.1. Карта данных по хранилищам
 
-```mermaid
-graph TB
-    subgraph PG["🗄️ PostgreSQL — OLTP, source of truth"]
-        Users[users]
-        Accounts[accounts]
-        Instruments[instruments]
-        Orders[orders]
-        Positions[positions]
-        Transactions[transactions]
-    end
+```
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ PostgreSQL — OLTP, source of truth                              │
+   │                                                                 │
+   │   users   ·   accounts   ·   instruments                        │
+   │   orders  ·   positions  ·   transactions                       │
+   └─────────────────────────────────────────────────────────────────┘
 
-    subgraph Rds["⚡ Redis — кэш + шина + сессии"]
-        QCache["quotes:{ticker}<br/>HASH"]
-        QChan["channel:quotes:*<br/>Pub/Sub"]
-        QStream["stream:quotes<br/>Stream"]
-        Sess["session:{jti}<br/>STRING (TTL 15m)"]
-        Refresh["refresh:{token}<br/>STRING (TTL 30d)"]
-        RateLim["ratelimit:{user}:{bucket}<br/>STRING + TTL"]
-    end
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ Redis — кэш + шина + сессии                                     │
+   │                                                                 │
+   │   quotes:{ticker}            HASH                               │
+   │   channel:quotes:*           Pub/Sub                            │
+   │   stream:quotes              Stream                             │
+   │   session:{jti}              STRING (TTL 15m)                   │
+   │   refresh:{token}            STRING (TTL 30d)                   │
+   │   ratelimit:{user}:{bucket}  STRING + TTL                       │
+   └─────────────────────────────────────────────────────────────────┘
 
-    subgraph CH["📊 ClickHouse — time-series, история"]
-        QTicks[quotes_ticks]
-        QCandles_1m[quotes_candles_1m]
-        QCandles_1h[quotes_candles_1h]
-    end
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ ClickHouse — time-series, история                               │
+   │                                                                 │
+   │   quotes_ticks                                                  │
+   │   quotes_candles_1m   (Materialized View)                       │
+   │   quotes_candles_1h   (Materialized View)                       │
+   └─────────────────────────────────────────────────────────────────┘
 ```
 
 | Класс данных | Хранилище | Почему здесь |
@@ -53,62 +52,47 @@ graph TB
 
 ### 6.2.1. Диаграмма
 
-```mermaid
-erDiagram
-    users ||--o{ accounts : "имеет"
-    users ||--o{ orders : "размещает"
-    users ||--o{ positions : "владеет"
-    users ||--o{ transactions : "проводит"
-    instruments ||--o{ orders : "по тикеру"
-    instruments ||--o{ positions : "по тикеру"
-    orders ||--o| transactions : "порождает"
-
-    users {
-        TEXT id PK "u_xxx"
-        TEXT email UK
-        TEXT password_hash
-        TIMESTAMPTZ created_at
-    }
-    accounts {
-        BIGSERIAL id PK
-        TEXT user_id FK
-        BIGINT balance_cents
-        TEXT currency
-        TIMESTAMPTZ updated_at
-    }
-    instruments {
-        TEXT ticker PK
-        TEXT name
-        TEXT type
-        INT lot_size
-    }
-    orders {
-        TEXT id PK "o_xxx"
-        TEXT user_id FK
-        TEXT ticker FK
-        TEXT side "BUY/SELL"
-        INT qty
-        BIGINT price_cents
-        TEXT status "PENDING/EXECUTED/REJECTED"
-        TEXT idempotency_key
-        TIMESTAMPTZ created_at
-        TIMESTAMPTZ executed_at
-    }
-    positions {
-        TEXT user_id PK
-        TEXT ticker PK
-        INT qty
-        BIGINT avg_price_cents
-        TIMESTAMPTZ updated_at
-    }
-    transactions {
-        BIGSERIAL id PK
-        TEXT user_id FK
-        TEXT type "DEPOSIT/BUY/SELL"
-        BIGINT amount_cents
-        TEXT ref_order_id FK
-        TIMESTAMPTZ created_at
-    }
+```
+   ┌────────────────────────┐
+   │ users                  │
+   │────────────────────────│
+   │ id              PK  u_*│       ┌────────────────────────┐
+   │ email           UQ     │──1..*─│ accounts               │
+   │ password_hash          │       │────────────────────────│
+   │ created_at             │       │ id             PK      │
+   └─┬────────┬───────┬─────┘       │ user_id        FK ──┐  │
+     │        │       │             │ balance_cents  BIGINT  │
+     │        │       │             │ currency               │
+     │        │       │             │ updated_at             │
+     │        │       │             └────────────────────────┘
+     │ 1..*   │ 1..*  │ 1..*
+     │        │       │
+     ▼        ▼       ▼
+   ┌────────────────────────┐       ┌────────────────────────┐
+   │ orders                 │ * .. 1│ instruments            │
+   │────────────────────────│───────│────────────────────────│
+   │ id              PK o_* │       │ ticker         PK      │
+   │ user_id         FK     │       │ name                   │
+   │ ticker          FK ────┘       │ type                   │
+   │ side    BUY|SELL               │ lot_size               │
+   │ qty                            └────────────────────────┘
+   │ price_cents                            ▲
+   │ status  PEND|EXEC|REJ                  │ * .. 1
+   │ idempotency_key                        │
+   │ created_at, executed_at        ┌────────────────────────┐
+   └─┬──────────────────────┐       │ positions              │
+     │ 1..0..1              │       │────────────────────────│
+     ▼                      │       │ user_id PK, FK         │
+   ┌────────────────────────┐       │ ticker  PK, FK ────────┘
+   │ transactions           │       │ qty
+   │────────────────────────│       │ avg_price_cents
+   │ id              PK     │       │ updated_at
+   │ user_id         FK     │       └────────────────────────┘
+   │ type DEP|BUY|SELL      │
+   │ amount_cents           │
+   │ ref_order_id    FK ────┘
+   │ created_at             │
+   └────────────────────────┘
 ```
 
 ### 6.2.2. DDL

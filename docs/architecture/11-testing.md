@@ -1,8 +1,6 @@
 # 11. Стратегия тестирования
 
-## Назначение
-
-Описать **три уровня тестов** (модульный, интеграционный, системный) и **тестовое инструментальное обеспечение** на Kotlin / Go / Python — этого требует ТЗ §6.9.
+Три уровня тестов (модульный, интеграционный, системный) и тестовое инструментальное обеспечение на Kotlin / Go / Python. Этого требует ТЗ §6.9.
 
 Каждый уровень отвечает на свой вопрос:
 
@@ -16,27 +14,32 @@
 
 ## 11.1. Уровни тестирования
 
-```mermaid
-graph TB
-    subgraph Sys["Системные (Load Simulator)"]
-        LS["10к виртуальных клиентов<br/>через публичный API"]
-    end
-
-    subgraph Int["Интеграционные (per-service)"]
-        I1["Gateway + Redis"]
-        I2["Core Service + PostgreSQL + Redis"]
-        I3["Quotes + Redis + ClickHouse + Fake Driver"]
-        I4["C Driver — kernel-level"]
-    end
-
-    subgraph Unit["Юнит-тесты (per-class)"]
-        U1["Gateway: routing, JWT, WsHub"]
-        U2["Core Service: domain logic"]
-        U3["Quotes: parser, batcher"]
-        U4["Simulator: scenario logic"]
-    end
-
-    Unit --> Int --> Sys
+```
+                  ┌─────────────────────────────────────────┐
+                  │ Системные (Load Simulator)              │
+                  │ 10к виртуальных клиентов                │
+                  │ через публичный API                     │
+                  └─────────────────────────────────────────┘
+                                    ▲
+                                    │
+   ┌──────────────────────────────────────────────────────────────┐
+   │ Интеграционные (per-service)                                 │
+   │                                                              │
+   │ · Gateway + Redis                                            │
+   │ · Core Service + PostgreSQL + Redis                          │
+   │ · Quotes + Redis + ClickHouse + Fake Driver                  │
+   │ · C Driver — kernel-level                                    │
+   └──────────────────────────────────────────────────────────────┘
+                                    ▲
+                                    │
+   ┌──────────────────────────────────────────────────────────────┐
+   │ Юнит-тесты (per-class)                                       │
+   │                                                              │
+   │ · Gateway:      routing, JWT, WsHub                          │
+   │ · Core Service: domain logic                                 │
+   │ · Quotes:       parser, batcher                              │
+   │ · Simulator:    scenario logic                               │
+   └──────────────────────────────────────────────────────────────┘
 ```
 
 **Пирамида тестов** (по числу): много юнит-тестов → меньше интеграционных → ещё меньше системных. Юнит-тесты быстрые (миллисекунды), системные — медленные (минуты).

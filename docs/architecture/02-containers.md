@@ -1,70 +1,58 @@
 # 02. Структура системы
 
-## Назначение
-
-Раскрыть «чёрный ящик» Stockyard в **развёртываемые единицы**: микросервисы, клиенты, хранилища и инфраструктурные компоненты. Под «контейнером» здесь понимается отдельный исполняемый процесс — не Docker-контейнер (хотя для Stockyard почти всё пакуется в Docker).
+Раскрытие чёрного ящика в развёртываемые единицы: микросервисы, клиенты, хранилища, инфраструктура. «Контейнер» здесь — отдельный исполняемый процесс (не Docker-контейнер, хотя почти всё пакуется в Docker).
 
 ## Container-диаграмма
 
-```mermaid
-graph TB
-    %% Clients
-    Android["📱 <b>Android App</b><br/>Kotlin + Jetpack Compose"]
-    RN["📱 <b>Cross-platform App</b><br/>React Native"]
-    Sim["🤖 <b>Load Simulator</b><br/>Kotlin / Go / Python"]
+```
+   CLIENTS
+   ┌──────────────────┐ ┌────────────────────┐ ┌────────────────────┐
+   │ Android App      │ │ Cross-platform App │ │ Load Simulator     │
+   │ Kotlin + Compose │ │ React Native       │ │ Kotlin / Go / Py   │
+   └────────┬─────────┘ └─────────┬──────────┘ └──────────┬─────────┘
+            │ HTTPS / WSS         │ HTTPS / WSS           │ HTTPS / WSS
+            └─────────────────────┼───────────────────────┘
+                                  │ (тот же публичный API)
+                                  ▼
+   EDGE                ┌──────────────────────────┐
+                       │   API Gateway            │
+                       │   Kotlin + Ktor          │
+                       │   BFF, WS-fanout, JWT    │
+                       └──┬───────────────┬───────┘
+                          │ HTTP/JSON     │ PUB/SUB, HSET, HGET
+                          │ internal API  │
+                          ▼               │
+   APPLICATION  ┌────────────────────┐    │           ┌────────────────────┐
+                │ Core Service       │    │           │ Quotes Service     │
+                │ Kotlin + Ktor      │    │           │ Go                 │
+                │ ордера, портфели   │    │           │ сбор котировок     │
+                └───┬──────┬─────┬───┘    │           └───┬─────────┬──────┘
+                    │      │     │        │               │         │
+                    │SQL   │HGET │SELECT  │PUB/HSET/XADD  │PUBLISH  │INSERT
+                    │      │     │(история)               │ HSET    │(батч)
+                    │      │     │        │               │ XADD    │
+                    ▼      ▼     ▼        ▼               ▼         ▼
+   DATA       ┌─────────┐ ┌─────────────────┐ ┌──────────────────────┐
+              │ Postgre │ │ Redis / KeyDB   │ │ ClickHouse           │
+              │ SQL     │ │ cache, sessions,│ │ история тиков        │
+              │ users,  │ │ pub/sub, streams│ │ (time-series)        │
+              │ orders, │ └─────────────────┘ └──────────────────────┘
+              │ pos,txn │                              ▲
+              └─────────┘                              │
+                                                       │ INSERT (батч)
+                                                       │
+   DRIVER     ┌──────────────────────┐                 │
+              │ C Linux Driver       │                 │
+              │ /dev/stockyard       │─────────────────┘
+              │ имитация биржи       │  read() → Quotes Service
+              └──────────────────────┘
 
-    %% Edge / Gateway
-    GW["🚪 <b>API Gateway</b><br/>Kotlin + Ktor<br/><i>BFF, WS-fanout, JWT</i>"]
-
-    %% Backend services
-    CoreSvc["⚙️ <b>Core Service</b><br/>Kotlin + Ktor<br/><i>бизнес-логика, ордера</i>"]
-    QSvc["📡 <b>Quotes Service</b><br/>Go<br/><i>сбор котировок</i>"]
-
-    %% Driver
-    Drv["🔌 <b>C Linux Driver</b><br/><i>/dev/stockyard</i><br/>имитация биржи"]
-
-    %% Storages
-    PG[("🗄️ <b>PostgreSQL</b><br/>users, orders,<br/>positions, txns")]
-    Rds[("⚡ <b>Redis / KeyDB</b><br/>cache, sessions,<br/>pub/sub, streams")]
-    CH[("📊 <b>ClickHouse</b><br/>история тиков<br/>(time-series)")]
-
-    %% Observability
-    OTC["📈 <b>OTel Collector</b><br/>traces, metrics, logs"]
-
-    %% External flows
-    Android -->|"HTTPS / WSS"| GW
-    RN -->|"HTTPS / WSS"| GW
-    Sim -->|"HTTPS / WSS<br/>(тот же API)"| GW
-
-    %% Internal
-    GW -->|"HTTP/JSON<br/>internal API"| CoreSvc
-    GW -->|"PUB/SUB<br/>HSET / HGET"| Rds
-    CoreSvc -->|"SQL"| PG
-    CoreSvc -->|"HGET<br/>(текущая цена)"| Rds
-    CoreSvc -->|"SELECT<br/>(история)"| CH
-
-    %% Quotes pipeline
-    Drv -->|"read()"| QSvc
-    QSvc -->|"PUBLISH<br/>HSET<br/>XADD"| Rds
-    QSvc -->|"INSERT (батч)"| CH
-
-    %% Telemetry
-    GW -.->|"OTLP"| OTC
-    CoreSvc -.->|"OTLP"| OTC
-    QSvc -.->|"OTLP"| OTC
-
-    %% Styles
-    classDef client fill:#dae8fc,stroke:#6c8ebf
-    classDef service fill:#d5e8d4,stroke:#82b366
-    classDef storage fill:#fff2cc,stroke:#d6b656
-    classDef driver fill:#f8cecc,stroke:#b85450
-    classDef observ fill:#e1d5e7,stroke:#9673a6
-
-    class Android,RN,Sim client
-    class GW,CoreSvc,QSvc service
-    class PG,Rds,CH storage
-    class Drv driver
-    class OTC observ
+   OBSERVABILITY (опционально, OTLP-стрим из всех сервисов)
+              ┌──────────────────────┐
+              │ OTel Collector       │  ◀── Gateway / Core / Quotes
+              │ traces, metrics,     │      (пунктирные ссылки в проде)
+              │ logs                 │
+              └──────────────────────┘
 ```
 
 ## Каталог контейнеров
@@ -107,41 +95,29 @@ graph TB
 
 ## Группировка по слоям (logical layering)
 
-```mermaid
-graph TB
-    subgraph L1["🔵 Client Layer"]
-        Android
-        RN
-        Sim
-    end
-
-    subgraph L2["🟢 Edge Layer"]
-        GW["API Gateway"]
-    end
-
-    subgraph L3["🟢 Application Layer"]
-        CoreSvc["Core Service"]
-        QSvc["Quotes Service"]
-    end
-
-    subgraph L4["🟡 Data Layer"]
-        PG[("PostgreSQL")]
-        Rds[("Redis")]
-        CH[("ClickHouse")]
-    end
-
-    subgraph L5["🔴 Driver Layer"]
-        Drv["C Driver"]
-    end
-
-    L1 --> L2 --> L3 --> L4
-    L5 --> L3
-
-    style L1 fill:#dae8fc
-    style L2 fill:#d5e8d4
-    style L3 fill:#d5e8d4
-    style L4 fill:#fff2cc
-    style L5 fill:#f8cecc
+```
+   ┌────────────────────────────────────────────────────────────┐
+   │ Client Layer:   Android  ·  React Native  ·  Load Simulator│
+   └──────────────────────────────┬─────────────────────────────┘
+                                  │
+                                  ▼
+   ┌────────────────────────────────────────────────────────────┐
+   │ Edge Layer:                  API Gateway                   │
+   └──────────────────────────────┬─────────────────────────────┘
+                                  │
+                                  ▼
+   ┌────────────────────────────────────────────────────────────┐
+   │ Application Layer:    Core Service  ·  Quotes Service      │◀──┐
+   └──────────────────────────────┬─────────────────────────────┘   │
+                                  │                                 │
+                                  ▼                                 │
+   ┌────────────────────────────────────────────────────────────┐   │
+   │ Data Layer:        PostgreSQL  ·  Redis  ·  ClickHouse     │   │
+   └────────────────────────────────────────────────────────────┘   │
+                                                                    │
+   ┌────────────────────────────────────────────────────────────┐   │
+   │ Driver Layer:                C Driver                      │───┘
+   └────────────────────────────────────────────────────────────┘
 ```
 
 ## Принципы границ контейнеров
@@ -156,32 +132,38 @@ graph TB
 
 API Gateway — **multi-homed**: один процесс с интерфейсами в обеих сетях. Снаружи слушает HTTPS/WSS на :443, изнутри ходит к Core Service и Redis. Все остальные сервисы и хранилища — только в приватной сети.
 
-```mermaid
-graph LR
-    Internet((Internet))
-
-    subgraph Public["🌐 Public-facing"]
-        GWp["API Gateway :443<br/>(public face)"]
-    end
-
-    subgraph Private["🔒 Private network"]
-        GWi["API Gateway<br/>(private face,<br/>тот же процесс)"]
-        CoreSvc
-        QSvc
-        PG
-        Rds
-        CH
-    end
-
-    Internet --> GWp
-    GWp -.->|"один процесс,<br/>две сети"| GWi
-    GWi --> CoreSvc
-    GWi --> Rds
-    QSvc --> Rds
-    QSvc --> CH
-    CoreSvc --> PG
-    CoreSvc --> Rds
-    CoreSvc --> CH
+```
+                       ╭───────────╮
+                       │  Internet │
+                       ╰─────┬─────╯
+                             │
+   ════════════════ Public-facing ════════════════════════════════
+                             │
+                             ▼
+                  ┌──────────────────────┐
+                  │ API Gateway :443     │
+                  │ (public face)        │
+                  └──────────┬───────────┘
+                             │  один процесс, две сети
+   ════════════════ Private network ══════════════════════════════
+                             ▼
+                  ┌──────────────────────┐
+                  │ API Gateway          │
+                  │ (private face)       │
+                  └─┬──────────────────┬─┘
+                    │                  │
+                    ▼                  ▼
+              ┌──────────┐       ┌──────────┐
+              │ Core Svc │──┐    │  Redis   │
+              └──┬───┬───┘  │    └──────────┘
+                 │   │      │         ▲
+                 │   │      │         │
+                 │   │      └─────────┤
+                 │   │                │
+                 ▼   ▼          ┌─────┴────────┐
+              ┌────┐ ┌────┐     │ Quotes Svc   │
+              │ PG │ │ CH │◀────┤              │
+              └────┘ └────┘     └──────────────┘
 ```
 
 **Только API Gateway** доступен из публичной сети. Прямого доступа извне к Core Service, Quotes Service или хранилищам нет.

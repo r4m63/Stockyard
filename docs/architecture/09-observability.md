@@ -1,45 +1,50 @@
 # 09. Наблюдаемость
 
-## Назначение
+Что и как наблюдаем в работающей системе: метрики, трейсы, логи. Где собираются, где хранятся, какие SLI/SLO формируются на их основе. OpenTelemetry — по требованию ТЗ.
 
-Описать, **что и как мы наблюдаем** в работающей системе: метрики, трейсы, логи; как они собираются, где хранятся и какие SLI/SLO на их основе формируются. По требованию ТЗ — Open Telemetry.
-
-> ### 🎯 MVP must-have vs 📦 Backlog
+> ### MVP must-have vs 📦 Backlog
 >
-> - 🎯 **MVP:** OTel SDK во всех сервисах, Prometheus + Jaeger + Grafana, RED-метрики, базовые бизнес-метрики `stockyard_*`, дашборды (§9.7), чек-лист для отчёта (§9.11).
-> - 📦 **Backlog:** Loki для логов, tail-based sampling, alerting в Slack/Telegram (§9.8). Логи в MVP читаем через `docker logs`.
+> - MVP: OTel SDK во всех сервисах, Prometheus + Jaeger + Grafana, RED-метрики, базовые бизнес-метрики `stockyard_*`, дашборды (§9.7), чек-лист для отчёта (§9.11).
+> - 📦 Backlog: Loki для логов, tail-based sampling, alerting в Slack/Telegram (§9.8). Логи в MVP читаем через `docker logs`.
 
 ---
 
 ## 9.1. Три столпа observability
 
-```mermaid
-graph TB
-    subgraph Three["Три типа сигналов"]
-        M["📈 <b>Metrics</b><br/>числа во времени:<br/>RPS, latency, errors,<br/>WS connections"]
-        T["🔗 <b>Traces</b><br/>путь запроса через сервисы:<br/>Mobile → GW → DB → PG"]
-        L["📜 <b>Logs</b><br/>структурированные события:<br/>error, audit, debug"]
-    end
-
-    subgraph Stack["Stockyard stack"]
-        SDK["OpenTelemetry SDK<br/>(во всех сервисах)"]
-        OTC["OTel Collector"]
-        Prom["Prometheus<br/>(metrics)"]
-        Jaeger["Jaeger<br/>(traces)"]
-        Loki["Loki / stdout<br/>(logs)"]
-        Graf["Grafana<br/>(dashboards)"]
-    end
-
-    M --> SDK
-    T --> SDK
-    L --> SDK
-    SDK -->|"OTLP"| OTC
-    OTC --> Prom
-    OTC --> Jaeger
-    OTC --> Loki
-    Prom --> Graf
-    Loki --> Graf
-    Jaeger --> Graf
+```
+   ── Три типа сигналов ──────────────────────────────────────────
+   Metrics                Traces                Logs
+   числа во времени:      путь запроса:         структурированные
+   RPS, latency, errors,  Mobile → GW →         события: error,
+   WS connections         Core → PG             audit, debug
+        │                     │                       │
+        └──────────┬──────────┴───────────────────────┘
+                   │
+                   ▼
+   ── Stockyard stack ────────────────────────────────────────────
+            ┌────────────────────────────┐
+            │ OpenTelemetry SDK          │
+            │ (во всех сервисах)         │
+            └─────────────┬──────────────┘
+                          │ OTLP
+                          ▼
+            ┌────────────────────────────┐
+            │ OTel Collector             │
+            └──┬─────────┬──────────┬────┘
+               │         │          │
+               ▼         ▼          ▼
+         ┌──────────┐┌────────┐┌──────────────┐
+         │Prometheus││ Jaeger ││ Loki / stdout│
+         │(metrics) ││(traces)││ (logs)       │
+         └────┬─────┘└────┬───┘└──────┬───────┘
+              │           │            │
+              └───────────┴────────────┘
+                          │
+                          ▼
+                  ┌───────────────────┐
+                  │ Grafana           │
+                  │ (dashboards)      │
+                  └───────────────────┘
 ```
 
 ---

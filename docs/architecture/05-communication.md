@@ -1,37 +1,44 @@
 # 05. Коммуникация и API
 
-## Назначение
-
-Описать **протоколы, форматы и контракты** взаимодействия между всеми компонентами системы — что куда ходит, в каком формате и с какими гарантиями.
+Протоколы, форматы и контракты взаимодействия между компонентами. Что куда ходит, в каком формате, с какими гарантиями.
 
 ---
 
 ## 5.1. Карта коммуникаций
 
-```mermaid
-graph LR
-    Mobile["📱 Mobile"]
-    GW["API Gateway"]
-    CoreSvc["Core Service"]
-    QSvc["Quotes Service"]
-    Drv["C Driver"]
-    PG[("PostgreSQL")]
-    Rds[("Redis")]
-    CH[("ClickHouse")]
-
-    Mobile -->|"HTTPS REST<br/>+ JSON"| GW
-    Mobile -->|"WSS<br/>+ JSON frames"| GW
-
-    GW -->|"HTTP REST<br/>+ JSON"| CoreSvc
-    GW -->|"RESP<br/>(SUBSCRIBE,<br/>HGET)"| Rds
-
-    CoreSvc -->|"PostgreSQL<br/>wire protocol<br/>+ raw SQL"| PG
-    CoreSvc -->|"RESP (HGET)"| Rds
-    CoreSvc -->|"HTTP / Native TCP"| CH
-
-    QSvc -->|"read() syscall<br/>+ binary format"| Drv
-    QSvc -->|"RESP<br/>(PUBLISH, HSET,<br/>XADD)"| Rds
-    QSvc -->|"HTTP/Native<br/>+ batch INSERT"| CH
+```
+   Mobile ──HTTPS REST + JSON──▶ ┌──────────┐
+   Mobile ──WSS + JSON frames──▶ │  API     │
+                                 │  Gateway │
+                                 └──┬────┬──┘
+                                    │    │ RESP (SUBSCRIBE, HGET)
+                       HTTP REST    │    └──────────────▶ ┌────────┐
+                       + JSON       │                     │ Redis  │
+                                    ▼                     └────────┘
+                            ┌──────────────┐                  ▲ ▲
+                            │ Core Service │ ── RESP (HGET) ──┘ │
+                            └──┬─────────┬─┘                    │
+                               │         │                      │
+                  PG wire +    │         │ HTTP / Native TCP    │
+                  raw SQL      │         │                      │
+                               ▼         ▼                      │
+                         ┌─────────┐  ┌──────────────┐          │
+                         │Postgres │  │ ClickHouse   │          │
+                         └─────────┘  └──────────────┘          │
+                                              ▲                 │
+                                              │ HTTP/Native     │
+                                              │ + batch INSERT  │
+                                              │                 │
+                                         ┌──────────────┐       │
+                                         │ Quotes Svc   │───────┘
+                                         └──┬───────────┘    RESP
+                                            │ read() syscall (PUBLISH,
+                                            │ + binary format HSET, XADD)
+                                            ▼
+                                         ┌──────────────┐
+                                         │ C Driver     │
+                                         │ /dev/stockyard│
+                                         └──────────────┘
 ```
 
 ---
@@ -418,20 +425,31 @@ Mobile ──[5s timeout]──► Gateway ──[2s timeout]──► Core Serv
 
 ### Поток
 
-```mermaid
-sequenceDiagram
-    Mobile ->> Gateway: POST /auth/login {email,pwd}
-    Gateway ->> CoreSvc: POST /internal/auth
-    CoreSvc -->> Gateway: { userId, passwordValid: true }
-    Gateway ->> Gateway: issue JWT (access+refresh)
-    Gateway ->> Redis: SET session:{jti} userId TTL=15m
-    Gateway -->> Mobile: { accessToken, refreshToken }
-
-    Note over Mobile,Gateway: Все последующие запросы с Authorization: Bearer
-    Mobile ->> Gateway: GET /portfolio (Bearer ...)
-    Gateway ->> Gateway: validate JWT signature + exp
-    Gateway ->> Redis: EXISTS session:{jti}
-    Gateway ->> CoreSvc: GET /internal/users/{userId}/portfolio
+```
+   Mobile          Gateway          CoreSvc          Redis
+     │                │                │                │
+     │ POST /auth/login {email,pwd}    │                │
+     │───────────────▶│                │                │
+     │                │ POST /internal/auth             │
+     │                │───────────────▶│                │
+     │                │                │ { userId,      │
+     │                │                │   passwordValid: true }
+     │                │◀───────────────│                │
+     │                │ issue JWT (access + refresh)    │
+     │                │ SET session:{jti} userId TTL=15m│
+     │                │────────────────────────────────▶│
+     │ { accessToken, refreshToken }   │                │
+     │◀───────────────│                │                │
+     │                │                │                │
+   . . . все последующие запросы с Authorization: Bearer . . .
+     │                │                │                │
+     │ GET /portfolio (Bearer …)       │                │
+     │───────────────▶│                │                │
+     │                │ validate JWT signature + exp    │
+     │                │ EXISTS session:{jti}            │
+     │                │────────────────────────────────▶│
+     │                │ GET /internal/users/{userId}/portfolio
+     │                │───────────────▶│                │
 ```
 
 ### Rate limiting

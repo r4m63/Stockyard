@@ -1,32 +1,27 @@
 # 07. Согласованность и транзакции
 
-## Назначение
-
-Описать **гарантии согласованности данных** и работу с транзакциями: где нужен строгий ACID, где допустима eventual consistency, как обеспечивается идемпотентность и как обрабатываются конкурентные операции.
+Гарантии согласованности и работа с транзакциями. Где нужен строгий ACID, где допустима eventual consistency, как обеспечивается идемпотентность, как обрабатываются конкурентные операции.
 
 ---
 
 ## 7.1. Карта гарантий
 
-```mermaid
-graph LR
-    subgraph Strict["🔒 Strong consistency (ACID)"]
-        Money["Деньги, балансы"]
-        Orders["Ордера, исполнение"]
-        Positions["Позиции"]
-        TxnLog["История транзакций"]
-    end
+```
+   ┌─────────────────────────────────┐ ┌─────────────────────────────────┐
+   │ Strong consistency (ACID)       │ │ Eventual consistency            │
+   │                                 │ │                                 │
+   │ · Деньги, балансы               │ │ · Котировки (Redis cache)       │
+   │ · Ордера, исполнение            │ │ · UI-snapshot портфеля          │
+   │ · Позиции                       │ │ · История тиков (ClickHouse)    │
+   │ · История транзакций            │ │                                 │
+   └─────────────────────────────────┘ └─────────────────────────────────┘
 
-    subgraph Eventual["⏱️ Eventual consistency"]
-        Quotes["Котировки (Redis cache)"]
-        UI["UI-snapshot портфеля"]
-        Charts["История тиков (ClickHouse)"]
-    end
-
-    subgraph Best["🎯 At-most-once / best effort"]
-        Pubsub["Pub/Sub доставка тиков"]
-        Logs["Логи и метрики"]
-    end
+   ┌─────────────────────────────────┐
+   │ At-most-once / best effort      │
+   │                                 │
+   │ · Pub/Sub доставка тиков        │
+   │ · Логи и метрики                │
+   └─────────────────────────────────┘
 ```
 
 | Класс данных | Гарантия | Хранилище | Обоснование |
@@ -195,35 +190,34 @@ UNIQUE (user_id, idempotency_key)
 
 ### 7.4.1. Двойной клик «Купить»
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant G as Gateway
-    participant D as Core Service
-    participant P as PostgreSQL
-
-    M ->> G: POST /orders {Idempotency-Key: K}
-    M ->> G: POST /orders {Idempotency-Key: K} (дубль)
-
-    par Параллельно
-        G ->> D: запрос 1
-        D ->> P: BEGIN
-        D ->> P: SELECT ... FOR UPDATE WHERE idem=K
-        Note over D,P: запись не найдена
-    and
-        G ->> D: запрос 2
-        D ->> P: BEGIN
-        D ->> P: SELECT ... FOR UPDATE WHERE idem=K
-        Note over D,P: ждёт блокировки
-    end
-
-    D ->> P: INSERT order
-    D ->> P: COMMIT
-    D -->> G: 201 Created (запрос 1)
-    Note over P: блокировка снята, запрос 2 видит запись
-    D ->> P: SELECT ... → найден ордер
-    D ->> P: COMMIT
-    D -->> G: 200 OK (тот же ордер) (запрос 2)
+```
+   Mobile         Gateway          Core            PostgreSQL
+     │               │              │                  │
+     │ POST /orders {Idempotency-Key: K}               │
+     │──────────────▶│              │                  │
+     │ POST /orders {Idempotency-Key: K}  (дубль)      │
+     │──────────────▶│              │                  │
+     │               │              │                  │
+     │               │ запрос 1 ──▶ │                  │
+     │               │              │  BEGIN           │
+     │               │              │  SELECT…FOR UPDATE WHERE idem=K
+     │               │              │ ──────────────▶  │
+     │               │              │ ◀──────────────  │  ← не найдено
+     │               │ запрос 2 ──▶ │                  │
+     │               │              │  BEGIN           │
+     │               │              │  SELECT…FOR UPDATE WHERE idem=K
+     │               │              │ ──────────────▶  │  ← блокировка
+     │               │              │                  │    ждёт
+     │               │              │  INSERT order    │
+     │               │              │  COMMIT (запрос 1)
+     │               │ ◀────────────│                  │
+     │ 201 Created   │              │                  │  ← блокировка снята,
+     │ ◀─────────────│              │                  │    запрос 2 видит запись
+     │               │              │  SELECT… → найден ордер
+     │               │              │  COMMIT (запрос 2)
+     │               │ ◀────────────│                  │
+     │ 200 OK (тот же ордер)        │                  │
+     │ ◀─────────────│              │                  │
 ```
 
 ### 7.4.2. Гонка за баланс при недостатке средств

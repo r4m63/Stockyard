@@ -1,8 +1,6 @@
 # 10. Ключевые сценарии
 
-## Назначение
-
-Показать, как **компоненты системы взаимодействуют** в ключевых пользовательских и системных потоках. Этот раздел связывает структурные и эксплуатационные документы в осмысленные сквозные сценарии.
+Как компоненты взаимодействуют в основных пользовательских и системных потоках. Связывает структурные и эксплуатационные документы в сквозные сценарии.
 
 ---
 
@@ -25,29 +23,34 @@
 
 ## 10.2. S1 — Регистрация
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant GW as Gateway
-    participant DB as Core Service
-    participant PG as PostgreSQL
-    participant R as Redis
-
-    M->>GW: POST /v1/auth/register {email, password}
-    GW->>GW: validate format
-    Note over GW: argon2 hash на стороне клиента?<br/>нет — на сервере
-    GW->>DB: POST /internal/users {email, password}
-    DB->>DB: argon2.hash(password)
-    DB->>PG: BEGIN
-    DB->>PG: INSERT users (id, email, hash)
-    DB->>PG: INSERT accounts (user_id, balance=100000_00, RUB)
-    Note over DB,PG: starter balance 100k RUB
-    DB->>PG: COMMIT
-    DB-->>GW: {userId}
-    GW->>GW: issue JWT (access+refresh)
-    GW->>R: SET session:{jti} userId TTL=15m
-    GW->>R: SET refresh:{rid} userId TTL=30d
-    GW-->>M: 201 {userId, accessToken, refreshToken}
+```
+   Mobile      Gateway       Core        PostgreSQL     Redis
+     │            │            │              │            │
+     │ POST /v1/auth/register {email, password}            │
+     │───────────▶│            │              │            │
+     │            │ validate format            │            │
+     │            │ (argon2 hash на сервере, не на клиенте)│
+     │            │ POST /internal/users {email, password} │
+     │            │───────────▶│              │            │
+     │            │            │ argon2.hash(password)     │
+     │            │            │ BEGIN        │            │
+     │            │            │─────────────▶│            │
+     │            │            │ INSERT users (id, email, hash)
+     │            │            │─────────────▶│            │
+     │            │            │ INSERT accounts (user_id, │
+     │            │            │   balance=100000_00, RUB) │
+     │            │            │─────────────▶│            │
+     │            │            │ COMMIT       │            │
+     │            │            │─────────────▶│            │
+     │            │ {userId}   │              │            │
+     │            │◀───────────│              │            │
+     │            │ issue JWT (access + refresh)           │
+     │            │ SET session:{jti} userId TTL=15m       │
+     │            │───────────────────────────────────────▶│
+     │            │ SET refresh:{rid} userId TTL=30d       │
+     │            │───────────────────────────────────────▶│
+     │ 201 {userId, accessToken, refreshToken}             │
+     │◀───────────│            │              │            │
 ```
 
 **Инварианты:**
@@ -59,84 +62,99 @@ sequenceDiagram
 
 ## 10.3. S2 — Логин
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant GW as Gateway
-    participant DB as Core Service
-    participant PG as PostgreSQL
-    participant R as Redis
-
-    M->>GW: POST /v1/auth/login {email, password}
-    GW->>DB: POST /internal/auth {email, password}
-    DB->>PG: SELECT id, password_hash FROM users WHERE email=?
-    DB->>DB: argon2.verify(password, hash)
-    alt invalid
-        DB-->>GW: 401 {INVALID_CREDENTIALS}
-        GW-->>M: 401
-    else valid
-        DB-->>GW: {userId}
-        GW->>GW: issue JWT
-        GW->>R: SET session:{jti}, refresh:{rid}
-        GW-->>M: 200 {accessToken, refreshToken}
-    end
+```
+   Mobile      Gateway       Core         PostgreSQL    Redis
+     │            │            │              │            │
+     │ POST /v1/auth/login {email, password}               │
+     │───────────▶│            │              │            │
+     │            │ POST /internal/auth {email, password}  │
+     │            │───────────▶│              │            │
+     │            │            │ SELECT id, password_hash  │
+     │            │            │ FROM users WHERE email=?  │
+     │            │            │─────────────▶│            │
+     │            │            │ argon2.verify(password, hash)
+     │            │            │              │            │
+     │            │            │ ┌── invalid ──────────────────────┐
+     │            │ 401 {INVALID_CREDENTIALS} │                    │
+     │            │◀───────────│              │            │       │
+     │ 401        │            │              │            │       │
+     │◀───────────│            │              │            │       │
+     │            │            │ └────────────────────────────────┘
+     │            │            │ ┌── valid ────────────────────────┐
+     │            │ {userId}   │              │            │       │
+     │            │◀───────────│              │            │       │
+     │            │ issue JWT  │              │            │       │
+     │            │ SET session:{jti}, refresh:{rid}       │       │
+     │            │───────────────────────────────────────▶│       │
+     │ 200 {accessToken, refreshToken}        │            │       │
+     │◀───────────│            │              │            │       │
+     │            │            │ └────────────────────────────────┘
 ```
 
 ### S2-bis — Refresh
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant GW as Gateway
-    participant R as Redis
-
-    M->>GW: POST /v1/auth/refresh {refreshToken}
-    GW->>GW: verify signature
-    GW->>R: GET refresh:{rid}
-    alt не найден / истёк
-        GW-->>M: 401 {INVALID_REFRESH}
-    else найден
-        GW->>GW: issue new accessToken
-        GW->>R: SET session:{new_jti}
-        GW-->>M: 200 {accessToken}
-    end
+```
+   Mobile      Gateway       Redis
+     │            │            │
+     │ POST /v1/auth/refresh {refreshToken}
+     │───────────▶│            │
+     │            │ verify signature
+     │            │ GET refresh:{rid}
+     │            │───────────▶│
+     │            │            │
+     │            │ ┌── не найден / истёк ──┐
+     │ 401 {INVALID_REFRESH}    │           │
+     │◀───────────│            │            │
+     │            │ └────────────────────┘  │
+     │            │ ┌── найден ────────────┐
+     │            │ issue new accessToken   │
+     │            │ SET session:{new_jti}   │
+     │            │───────────▶│            │
+     │ 200 {accessToken}       │            │
+     │◀───────────│            │            │
+     │            │ └────────────────────┘
 ```
 
 ---
 
 ## 10.4. S3 — Подписка на котировки
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant GW as Gateway
-    participant R as Redis
-    participant Q as Quotes Service
-    participant D as C Driver
-
-    M->>GW: WSS /v1/ws (Authorization: Bearer)
-    GW->>GW: validate JWT
-    GW-->>M: 101 Switching Protocols (WS handshake)
-
-    M->>GW: {action: "subscribe", tickers: ["SBER","GAZP"]}
-    GW->>GW: register subscription in WsHub
-    GW->>R: SUBSCRIBE channel:quotes:SBER
-    GW->>R: SUBSCRIBE channel:quotes:GAZP
-    GW-->>M: {type: "subscribed", tickers: ["SBER","GAZP"]}
-
-    Note over D,Q: непрерывный поток в фоне
-    D->>Q: tick(SBER, 285.50/285.70)
-    Q->>R: HSET quotes:SBER ...
-    Q->>R: PUBLISH channel:quotes:SBER {...}
-
-    R-->>GW: message on channel:quotes:SBER
-    GW->>GW: lookup subscribers (WsHub)
-    GW-->>M: {type: "quote", ticker:"SBER", bid:285.50, ask:285.70, ...}
-
-    Note over GW,M: heartbeat
-    loop каждые 30 сек
-        GW-->>M: {type: "pong"}
-    end
+```
+   Mobile     Gateway      Redis        Quotes      C Driver
+     │           │           │             │            │
+     │ WSS /v1/ws (Authorization: Bearer)               │
+     │──────────▶│           │             │            │
+     │           │ validate JWT                          │
+     │ 101 Switching Protocols (WS handshake)           │
+     │◀──────────│           │             │            │
+     │           │           │             │            │
+     │ {action: "subscribe", tickers: ["SBER","GAZP"]}  │
+     │──────────▶│           │             │            │
+     │           │ register subscription in WsHub        │
+     │           │ SUBSCRIBE channel:quotes:SBER        │
+     │           │──────────▶│             │            │
+     │           │ SUBSCRIBE channel:quotes:GAZP        │
+     │           │──────────▶│             │            │
+     │ {type: "subscribed", tickers: ["SBER","GAZP"]}   │
+     │◀──────────│           │             │            │
+     │           │           │             │            │
+   . . . непрерывный поток в фоне . . .                  │
+     │           │           │             │            │
+     │           │           │             │ tick(SBER, 285.50/285.70)
+     │           │           │             │◀───────────│
+     │           │           │ HSET quotes:SBER …       │
+     │           │           │◀────────────│            │
+     │           │           │ PUBLISH channel:quotes:SBER {…}
+     │           │           │◀────────────│            │
+     │           │ message on channel:quotes:SBER       │
+     │           │◀──────────│             │            │
+     │           │ lookup subscribers (WsHub)            │
+     │ {type:"quote", ticker:"SBER", bid:285.50, ask:285.70, …}
+     │◀──────────│           │             │            │
+     │           │           │             │            │
+   . . . heartbeat каждые 30 сек . . .                    │
+     │ {type: "pong"}                       │            │
+     │◀──────────│           │             │            │
 ```
 
 **Особенности:**
@@ -148,19 +166,22 @@ sequenceDiagram
 
 ## 10.5. S4 — История котировок (график)
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant GW as Gateway
-    participant DB as Core Service
-    participant CH as ClickHouse
-
-    M->>GW: GET /v1/quotes/SBER/history?from=...&to=...&interval=1m
-    GW->>DB: GET /internal/quotes/history?...
-    DB->>CH: SELECT ... FROM quotes_candles_1m WHERE ticker='SBER' ...
-    CH-->>DB: [(ts, o, h, l, c, v), ...]
-    DB-->>GW: { ticker, candles: [...] }
-    GW-->>M: 200 OK
+```
+   Mobile      Gateway       Core         ClickHouse
+     │            │            │              │
+     │ GET /v1/quotes/SBER/history?from=…&to=…&interval=1m
+     │───────────▶│            │              │
+     │            │ GET /internal/quotes/history?…
+     │            │───────────▶│              │
+     │            │            │ SELECT … FROM quotes_candles_1m
+     │            │            │ WHERE ticker='SBER' …
+     │            │            │─────────────▶│
+     │            │            │ [(ts, o, h, l, c, v), …]
+     │            │            │◀─────────────│
+     │            │ { ticker, candles: [...] }│
+     │            │◀───────────│              │
+     │ 200 OK     │            │              │
+     │◀───────────│            │              │
 ```
 
 **Кэширование:**
@@ -173,51 +194,66 @@ sequenceDiagram
 
 Самый ответственный сценарий — здесь живут деньги.
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant GW as Gateway
-    participant DB as Core Service
-    participant R as Redis
-    participant PG as PostgreSQL
-
-    M->>GW: POST /v1/orders<br/>Idempotency-Key: K<br/>{ticker:"SBER", side:"BUY", qty:10}
-    GW->>GW: validate JWT, rate limit
-    GW->>DB: POST /internal/orders {userId, K, SBER, BUY, 10}
-
-    DB->>PG: SELECT id FROM orders WHERE user_id=? AND idempotency_key=K
-    alt уже есть (повтор)
-        PG-->>DB: existing order
-        DB-->>GW: 200 OK (existing)
-        GW-->>M: 200 OK (тот же ответ)
-    else первый раз
-        DB->>R: HGET quotes:SBER ask
-        R-->>DB: 28570 (cents)
-        DB->>DB: cost = 10 * 28570 = 285700
-
-        DB->>PG: BEGIN
-        DB->>PG: SELECT balance_cents FROM accounts<br/>WHERE user_id=? FOR UPDATE
-        PG-->>DB: 1000000
-
-        alt balance < cost
-            DB->>PG: INSERT orders (status=REJECTED)
-            DB->>PG: COMMIT
-            DB-->>GW: 422 INSUFFICIENT_FUNDS
-            GW-->>M: 422
-        else balance >= cost
-            DB->>PG: UPDATE accounts SET balance -= cost
-            DB->>PG: INSERT INTO positions ... ON CONFLICT DO UPDATE
-            DB->>PG: INSERT orders (status=EXECUTED, price=ask)
-            DB->>PG: INSERT transactions (type=BUY, amount=-cost)
-            DB->>PG: COMMIT
-            DB-->>GW: 201 {orderId, status:EXECUTED, price:285.70}
-            GW-->>M: 201
-        end
-    end
-
-    opt пуш-уведомление об исполнении
-        GW-->>M: WS {type:"order.executed", orderId, ...}
-    end
+```
+   Mobile      Gateway       Core         Redis      PostgreSQL
+     │            │            │            │            │
+     │ POST /v1/orders   Idempotency-Key: K              │
+     │ {ticker:"SBER", side:"BUY", qty:10}               │
+     │───────────▶│            │            │            │
+     │            │ validate JWT, rate limit│            │
+     │            │ POST /internal/orders {userId, K, SBER, BUY, 10}
+     │            │───────────▶│            │            │
+     │            │            │ SELECT id FROM orders   │
+     │            │            │ WHERE user_id=? AND idempotency_key=K
+     │            │            │────────────────────────▶│
+     │            │            │                         │
+     │            │            │ ┌── повтор ───────────────────────┐
+     │            │            │ existing order          │         │
+     │            │            │◀────────────────────────│         │
+     │            │ 200 OK (existing)        │           │         │
+     │            │◀───────────│             │           │         │
+     │ 200 OK (тот же ответ)   │             │           │         │
+     │◀───────────│            │             │           │         │
+     │            │            │ └────────────────────────────────┘
+     │            │            │ ┌── первый раз ───────────────────┐
+     │            │            │ HGET quotes:SBER ask    │         │
+     │            │            │────────────▶│           │         │
+     │            │            │ 28570 (cents)           │         │
+     │            │            │◀────────────│           │         │
+     │            │            │ cost = 10 * 28570 = 285700        │
+     │            │            │ BEGIN                   │         │
+     │            │            │────────────────────────▶│         │
+     │            │            │ SELECT balance_cents FROM accounts│
+     │            │            │ WHERE user_id=? FOR UPDATE        │
+     │            │            │────────────────────────▶│         │
+     │            │            │ 1000000                 │         │
+     │            │            │◀────────────────────────│         │
+     │            │            │                         │         │
+     │            │            │ ┌── balance < cost ───────────┐   │
+     │            │            │ INSERT orders (status=REJECTED)   │
+     │            │            │ COMMIT                  │     │   │
+     │            │            │────────────────────────▶│     │   │
+     │            │ 422 INSUFFICIENT_FUNDS   │           │     │   │
+     │            │◀───────────│             │           │     │   │
+     │ 422        │            │             │           │     │   │
+     │◀───────────│            │             │           │     │   │
+     │            │            │ └────────────────────────────┘   │
+     │            │            │ ┌── balance >= cost ──────────┐   │
+     │            │            │ UPDATE accounts SET balance -= cost
+     │            │            │ INSERT positions … ON CONFLICT DO UPDATE
+     │            │            │ INSERT orders (status=EXECUTED, price=ask)
+     │            │            │ INSERT transactions (type=BUY, amount=-cost)
+     │            │            │ COMMIT                  │     │   │
+     │            │            │────────────────────────▶│     │   │
+     │            │ 201 {orderId, status:EXECUTED, price:285.70}  │
+     │            │◀───────────│             │           │     │   │
+     │ 201        │            │             │           │     │   │
+     │◀───────────│            │             │           │     │   │
+     │            │            │ └────────────────────────────┘   │
+     │            │            │ └────────────────────────────────┘
+   . . . опционально: пуш-уведомление об исполнении . . .         │
+     │ WS {type:"order.executed", orderId, …}                     │
+     │◀───────────│            │             │           │        │
 ```
 
 **Что важно:**
@@ -232,58 +268,66 @@ sequenceDiagram
 
 Симметрично BUY, но с проверкой позиции вместо баланса.
 
-```mermaid
-sequenceDiagram
-    participant DB as Core Service
-    participant R as Redis
-    participant PG as PostgreSQL
-
-    Note over DB: после идемпотентности и rate-check
-
-    DB->>R: HGET quotes:SBER bid
-    R-->>DB: 28550
-
-    DB->>PG: BEGIN
-    DB->>PG: SELECT qty FROM positions WHERE user_id=? AND ticker=? FOR UPDATE
-    PG-->>DB: 10
-
-    alt qty < requested
-        DB->>PG: INSERT orders (status=REJECTED)
-        DB->>PG: COMMIT
-    else qty >= requested
-        DB->>PG: UPDATE positions SET qty -= req
-        DB->>PG: UPDATE accounts SET balance += proceeds
-        DB->>PG: INSERT orders (status=EXECUTED, price=bid)
-        DB->>PG: INSERT transactions (type=SELL, amount=+proceeds)
-        DB->>PG: COMMIT
-    end
+```
+   Core           Redis        PostgreSQL
+     │              │             │
+   . . . после идемпотентности и rate-check . . .
+     │              │             │
+     │ HGET quotes:SBER bid       │
+     │─────────────▶│             │
+     │ 28550        │             │
+     │◀─────────────│             │
+     │              │             │
+     │ BEGIN        │             │
+     │──────────────────────────▶│
+     │ SELECT qty FROM positions  │
+     │ WHERE user_id=? AND ticker=? FOR UPDATE
+     │──────────────────────────▶│
+     │ 10           │             │
+     │◀──────────────────────────│
+     │              │             │
+     │ ┌── qty < requested ─────────────┐
+     │ INSERT orders (status=REJECTED)  │
+     │ COMMIT       │             │     │
+     │──────────────────────────▶│     │
+     │ └────────────────────────────────┘
+     │ ┌── qty >= requested ────────────┐
+     │ UPDATE positions SET qty -= req  │
+     │ UPDATE accounts SET balance += proceeds
+     │ INSERT orders (status=EXECUTED, price=bid)
+     │ INSERT transactions (type=SELL, amount=+proceeds)
+     │ COMMIT       │             │     │
+     │──────────────────────────▶│     │
+     │ └────────────────────────────────┘
 ```
 
 ---
 
 ## 10.8. S7 — Портфель и история
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant GW as Gateway
-    participant DB as Core Service
-    participant PG as PostgreSQL
-    participant R as Redis
-
-    M->>GW: GET /v1/portfolio
-    GW->>DB: GET /internal/users/{userId}/portfolio
-
-    par Параллельно
-        DB->>PG: SELECT balance FROM accounts WHERE user_id=?
-    and
-        DB->>PG: SELECT ticker, qty, avg_price FROM positions WHERE user_id=?
-    end
-
-    DB->>R: HGET quotes:SBER last (батчем для всех тикеров портфеля)
-    DB->>DB: формирует ответ с current_price из Redis
-    DB-->>GW: { balance, positions:[{ticker, qty, avg, current}] }
-    GW-->>M: 200 OK
+```
+   Mobile      Gateway       Core         PostgreSQL    Redis
+     │            │            │              │            │
+     │ GET /v1/portfolio       │              │            │
+     │───────────▶│            │              │            │
+     │            │ GET /internal/users/{userId}/portfolio │
+     │            │───────────▶│              │            │
+     │            │            │              │            │
+   . . . параллельно . . .                                  │
+     │            │            │ SELECT balance FROM accounts
+     │            │            │ WHERE user_id=?           │
+     │            │            │─────────────▶│            │
+     │            │            │ SELECT ticker, qty, avg_price
+     │            │            │ FROM positions WHERE user_id=?
+     │            │            │─────────────▶│            │
+     │            │            │ HGET quotes:SBER last     │
+     │            │            │ (батчем для всех тикеров) │
+     │            │            │──────────────────────────▶│
+     │            │            │ формирует ответ с current_price из Redis
+     │            │ { balance, positions:[{ticker, qty, avg, current}] }
+     │            │◀───────────│              │            │
+     │ 200 OK     │            │              │            │
+     │◀───────────│            │              │            │
 ```
 
 `current_price` берётся из Redis, чтобы не делать join с ClickHouse каждый раз.
@@ -292,28 +336,28 @@ sequenceDiagram
 
 ## 10.9. S8 — Реконнект мобильного клиента
 
-```mermaid
-sequenceDiagram
-    participant M as Mobile
-    participant GW as Gateway
-    participant R as Redis
-
-    Note over M,GW: WS-соединение разорвано (плохая сеть)
-    Note over M: клиент детектирует разрыв
-
-    M->>GW: WSS reconnect (с тем же JWT)
-    GW->>GW: JWT validate
-    GW-->>M: 101 Switching Protocols
-
-    M->>GW: {action:"subscribe", tickers:[<сохранённые>]}
-    GW->>GW: regsiter subscriptions
-
-    par Snapshot
-        GW->>R: HGETALL quotes:SBER
-        GW-->>M: {type:"quote", ticker:"SBER", ...} (snapshot)
-    and Live updates
-        GW->>R: SUBSCRIBE channel:quotes:SBER
-    end
+```
+   Mobile      Gateway       Redis
+     │            │            │
+   . . . WS-соединение разорвано (плохая сеть) . . .
+   . . . клиент детектирует разрыв . . .
+     │            │            │
+     │ WSS reconnect (с тем же JWT)
+     │───────────▶│            │
+     │            │ JWT validate
+     │ 101 Switching Protocols │
+     │◀───────────│            │
+     │ {action:"subscribe", tickers:[<сохранённые>]}
+     │───────────▶│            │
+     │            │ register subscriptions
+     │            │            │
+   . . . параллельно . . .     │
+     │            │ HGETALL quotes:SBER (snapshot)
+     │            │───────────▶│
+     │ {type:"quote", ticker:"SBER", …} (snapshot)
+     │◀───────────│            │
+     │            │ SUBSCRIBE channel:quotes:SBER (live updates)
+     │            │───────────▶│
 ```
 
 **Свойства:**
@@ -327,73 +371,75 @@ sequenceDiagram
 
 Это пайплайн, который объединяет драйвер → клиента в одной картине.
 
-```mermaid
-sequenceDiagram
-    participant Drv as C Driver
-    participant Q as Quotes Service
-    participant R as Redis
-    participant CH as ClickHouse
-    participant GW as Gateway
-    participant M as Mobile
-
-    Drv->>Drv: timer tick (каждые 1 сек)
-    Drv->>Drv: random walk цен по всем тикерам
-    Drv->>Drv: write to ring buffer
-
-    Q->>Drv: read() from /dev/stockyard
-    Drv-->>Q: tick {SBER, ts, bid, ask, last, vol}
-
-    Q->>Q: parse, fanout
-
-    par сразу
-        Q->>R: PUBLISH channel:quotes:SBER ...
-        Q->>R: HSET quotes:SBER ...
-        Q->>R: XADD stream:quotes ...
-    and батчем
-        Q->>Q: накопление в буфере
-        Note over Q: каждую секунду
-        Q->>CH: INSERT INTO quotes_ticks VALUES (...)
-    end
-
-    R-->>GW: message on channel:quotes:SBER
-    GW->>GW: lookup subscribers (WsHub)
-    GW-->>M: WS frame {type:"quote", ...}
-
-    Note over Drv,M: total p95: < 500 мс
+```
+   C Driver     Quotes      Redis       ClickHouse    Gateway     Mobile
+      │           │           │              │           │           │
+      │ timer tick (каждые 1 сек)                                    │
+      │ random walk цен по всем тикерам                              │
+      │ write to ring buffer                                         │
+      │           │           │              │           │           │
+      │ read() from /dev/stockyard                                   │
+      │◀──────────│           │              │           │           │
+      │ tick {SBER, ts, bid, ask, last, vol}                         │
+      │──────────▶│           │              │           │           │
+      │           │ parse, fanout                                    │
+      │           │           │              │           │           │
+   . . . сразу . . .          │              │           │           │
+      │           │ PUBLISH channel:quotes:SBER …                    │
+      │           │──────────▶│              │           │           │
+      │           │ HSET quotes:SBER …       │           │           │
+      │           │──────────▶│              │           │           │
+      │           │ XADD stream:quotes …     │           │           │
+      │           │──────────▶│              │           │           │
+   . . . батчем (каждую секунду) . . .       │           │           │
+      │           │ накопление в буфере      │           │           │
+      │           │ INSERT INTO quotes_ticks VALUES (…)              │
+      │           │─────────────────────────▶│           │           │
+      │           │           │              │           │           │
+      │           │           │ message on channel:quotes:SBER       │
+      │           │           │─────────────────────────▶│           │
+      │           │           │              │ lookup subscribers (WsHub)
+      │           │           │              │           │ WS frame {type:"quote", …}
+      │           │           │              │           │──────────▶│
+      │           │           │              │           │           │
+   . . . total p95: < 500 мс . . .           │           │           │
 ```
 
 ---
 
 ## 10.11. S10 — Прогон Load Simulator
 
-```mermaid
-sequenceDiagram
-    participant Op as Operator
-    participant Sim as Load Simulator
-    participant GW as Gateway
-    participant Sys as Stockyard
-    participant Mon as Grafana
-
-    Op->>Sim: ./load-simulator --users 10000 --duration 10m
-    Sim->>Sim: spawn 10k coroutines
-
-    par для каждой
-        Sim->>GW: POST /auth/login → JWT
-        Sim->>GW: WS subscribe SBER, GAZP, ...
-        loop каждые N сек
-            Sim->>GW: GET /portfolio
-            Sim->>GW: POST /orders
-        end
-    end
-
-    GW->>Sys: обработка запросов
-    Sys-.->Mon: метрики через OTel
-
-    Sim->>Sim: собирает latency, errors
-
-    Note over Sim,Op: после 10 минут
-    Sim-->>Op: report:<br/>p95 /orders = 240 ms<br/>error rate = 0.3%<br/>WS msg lost = 0.001%
-    Op->>Mon: открывает Grafana, делает скриншоты
+```
+   Operator    Simulator    Gateway     Stockyard    Grafana
+     │            │            │            │            │
+     │ ./load-simulator --users 10000 --duration 10m     │
+     │───────────▶│            │            │            │
+     │            │ spawn 10k coroutines                 │
+     │            │            │            │            │
+   . . . для каждой . . .      │            │            │
+     │            │ POST /auth/login → JWT  │            │
+     │            │───────────▶│            │            │
+     │            │ WS subscribe SBER, GAZP, …           │
+     │            │───────────▶│            │            │
+     │            │            │            │            │
+   . . . loop каждые N сек . . .            │            │
+     │            │ GET /portfolio          │            │
+     │            │───────────▶│            │            │
+     │            │ POST /orders            │            │
+     │            │───────────▶│            │            │
+     │            │            │ обработка запросов      │
+     │            │            │───────────▶│            │
+     │            │            │            │ . OTel . .▶│
+     │            │ собирает latency, errors             │
+     │            │            │            │            │
+   . . . после 10 минут . . .  │            │            │
+     │            │ report:    │            │            │
+     │            │  p95 /orders = 240 ms   │            │
+     │            │  error rate = 0.3%      │            │
+     │            │  WS msg lost = 0.001%   │            │
+     │◀───────────│            │            │            │
+     │ открывает Grafana, делает скриншоты               │
+     │───────────────────────────────────────────────────▶│
 ```
 
 Результаты прогона идут в раздел «Тестирование» отчёта.
