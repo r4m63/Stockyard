@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<!--
+  ClickHouse server config overlay for Stockyard.
+  Монтируется как /etc/clickhouse-server/config.d/stockyard.xml.
+  См. docs/architecture/12-storage-operations.md §12.3.1.
+-->
+<clickhouse>
+    <max_connections>256</max_connections>
+    <keep_alive_timeout>10</keep_alive_timeout>
+    <max_concurrent_queries>32</max_concurrent_queries>
+
+    <!-- Caches -->
+    <mark_cache_size>536870912</mark_cache_size>             <!-- 512 MB -->
+    <uncompressed_cache_size>1073741824</uncompressed_cache_size>  <!-- 1 GB -->
+
+    <!-- MergeTree backpressure: затормозить inserts при 300 partов, отказать при 600. -->
+    <merge_tree>
+        <parts_to_delay_insert>300</parts_to_delay_insert>
+        <parts_to_throw_insert>600</parts_to_throw_insert>
+        <max_parts_in_total>10000</max_parts_in_total>
+    </merge_tree>
+
+    <!-- Prometheus endpoint :9363/metrics — собирает Prometheus.
+         См. docs/architecture/09-observability.md §9.12.6 и deploy/prometheus.yml. -->
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>9363</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+    </prometheus>
+</clickhouse>

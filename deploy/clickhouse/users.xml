@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+  ClickHouse users overlay for Stockyard.
+  Монтируется как /etc/clickhouse-server/users.d/stockyard.xml.
+  См. docs/architecture/12-storage-operations.md §12.3.1.
+-->
+<clickhouse>
+    <profiles>
+        <default>
+            <max_memory_usage>2000000000</max_memory_usage>          <!-- 2 GB -->
+            <max_execution_time>10</max_execution_time>              <!-- секунд -->
+            <readonly>0</readonly>
+
+            <!-- Native batching на стороне CH: дополняет application-batch
+                 в Quotes Service (см. docs/architecture/12-storage-operations.md §12.3.2). -->
+            <async_insert>1</async_insert>
+            <wait_for_async_insert>0</wait_for_async_insert>
+            <async_insert_max_data_size>10485760</async_insert_max_data_size>
+            <async_insert_busy_timeout_ms>1000</async_insert_busy_timeout_ms>
+        </default>
+    </profiles>
+</clickhouse>

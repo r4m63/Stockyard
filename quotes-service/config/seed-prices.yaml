@@ -1,0 +1,68 @@
+# Стартовые котировки для 50 инструментов.
+# Quotes Service на старте делает HSET quotes:<ticker> last/bid/ask/volume,
+# далее драйвер /dev/stockyard двигает цену random walk-ом.
+#
+# Цены — копейки (INT64). Для FEES (lot_size=100000), VTBR (10000), HYDR (1000),
+# UPRO (1000), NMTP (1000), AFKS/IRAO/SNGS/SNGSP/CBOM (100), SBER/GAZP/MTSS/MOEX/
+# NLMK/RTKM/RUAL/AFLT/ALRS/TRMK/SBERP/RASP/MAGN/SGZH/MTLR/MTLRP/BSPB (10) —
+# bid/ask строятся вокруг last с шагом 0.5%.
+#
+# См. docs/architecture/seed/instruments-50.md и docs/architecture/06-data.md §6.3.2.
+
+defaults:
+  spread_bps: 50          # 0.5% bid/ask spread
+  initial_volume: 0
+
+instruments:
+  # Top-30
+  - ticker: SBER  ; last: 28000
+  - ticker: GAZP  ; last: 14000
+  - ticker: LKOH  ; last: 700000
+  - ticker: GMKN  ; last: 1500000
+  - ticker: ROSN  ; last: 55000
+  - ticker: NVTK  ; last: 130000
+  - ticker: MGNT  ; last: 580000
+  - ticker: MTSS  ; last: 28000
+  - ticker: YNDX  ; last: 420000
+  - ticker: OZON  ; last: 320000
+  - ticker: VKCO  ; last: 65000
+  - ticker: PLZL  ; last: 1320000
+  - ticker: AFKS  ; last: 2200
+  - ticker: AFLT  ; last: 6500
+  - ticker: ALRS  ; last: 8500
+  - ticker: CHMF  ; last: 165000
+  - ticker: FEES  ; last: 9
+  - ticker: HYDR  ; last: 78
+  - ticker: IRAO  ; last: 420
+  - ticker: MOEX  ; last: 22000
+  - ticker: NLMK  ; last: 22000
+  - ticker: PHOR  ; last: 720000
+  - ticker: POLY  ; last: 55000
+  - ticker: RTKM  ; last: 9500
+  - ticker: RUAL  ; last: 4200
+  - ticker: SNGS  ; last: 3000
+  - ticker: TATN  ; last: 70000
+  - ticker: TCSG  ; last: 320000
+  - ticker: TRMK  ; last: 21000
+  - ticker: VTBR  ; last: 11
+  # 2-эшелон
+  - ticker: PIKK  ; last: 80000
+  - ticker: SBERP ; last: 28000
+  - ticker: SNGSP ; last: 6500
+  - ticker: TATNP ; last: 68000
+  - ticker: RASP  ; last: 35000
+  - ticker: UPRO  ; last: 220
+  - ticker: LSRG  ; last: 80000
+  - ticker: MAGN  ; last: 5500
+  - ticker: SMLT  ; last: 380000
+  - ticker: SGZH  ; last: 230
+  - ticker: FIVE  ; last: 290000
+  - ticker: AGRO  ; last: 140000
+  - ticker: FLOT  ; last: 12000
+  - ticker: GLTR  ; last: 65000
+  - ticker: CBOM  ; last: 750
+  - ticker: ENPG  ; last: 40000
+  - ticker: MTLR  ; last: 28000
+  - ticker: MTLRP ; last: 28000
+  - ticker: NMTP  ; last: 1400
+  - ticker: BSPB  ; last: 32000
