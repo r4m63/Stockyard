@@ -19,6 +19,22 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+---
+
+## [0.5.0] - 2026-05-11
+
+### Added
 - `POST /v1/orders` — размещение BUY/SELL ордеров по рыночной цене из Redis. Требует `Authorization: Bearer` и `Idempotency-Key`. Атомарное исполнение в одной PostgreSQL-транзакции с `SELECT … FOR UPDATE` на `accounts` (BUY) или `positions` (SELL); audit-запись только на EXECUTED. REJECTED-ордера (недостаток средств/позиции) сохраняются в БД для пользовательской истории, в ответе — `422 INSUFFICIENT_FUNDS|INSUFFICIENT_POSITION` с details `{requiredCents, availableCents}` или `{requiredQty, availableQty}`. Idempotent повтор по тому же ключу возвращает тот же ордер; повтор с другим телом — `409 IDEMPOTENCY_CONFLICT`. (TASK-006)
 - `GET /v1/orders?status=&limit=&cursor=` — listing с keyset-пагинацией по `(created_at DESC, id DESC)` через индекс `idx_orders_user_created`. `cursor` — opaque base64. (TASK-006)
 - Временный «писатель котировок» `DevPriceFixture` в Core Service: на старте сидит `quotes:{ticker}` HASH для всех 50 тикеров из каталога, каждые 5 сек делает random walk ±0.5%. Отключается через `STOCKYARD_DEV_FIXTURE=false` в prod-like окружении; заместится Quotes Service в TASK-008. (TASK-006)
@@ -121,7 +137,8 @@ Compare links — обновляются автоматически /committer r
 Замени <org>/<repo> на реальный путь после публикации репозитория.
 -->
 
-[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/r4m63/Stockyard/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/r4m63/Stockyard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/r4m63/Stockyard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/r4m63/Stockyard/compare/v0.1.0...v0.2.0
