@@ -52,6 +52,9 @@ dependencies {
     // Argon2id для хэширования паролей (ADR-006)
     implementation(libs.argon2)
 
+    // ULID для идентификаторов user/order (CLAUDE.md «Конвенции/Идентификаторы»)
+    implementation(libs.ulidj)
+
     // Prometheus exporter через Micrometer + Ktor MicrometerMetrics plugin
     implementation(libs.micrometer.prometheus)
 

@@ -9,6 +9,7 @@ kotlinx-serialization = "1.7.3"
 logback = "1.5.12"
 logstash-encoder = "8.0"
 java-jwt = "4.4.0"
+ulidj = "1.0.4"
 lettuce = "6.4.1.RELEASE"
 commons-pool2 = "2.12.0"
 otel = "1.43.0"
@@ -42,6 +43,7 @@ logback-classic                 = { module = "ch.qos.logback:logback-classic",  
 logstash-encoder                = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstash-encoder" }
 
 java-jwt                        = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
+ulidj                           = { module = "io.azam.ulidj:ulidj", version.ref = "ulidj" }
 lettuce-core                    = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
 commons-pool2                   = { module = "org.apache.commons:commons-pool2", version.ref = "commons-pool2" }
 

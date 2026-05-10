@@ -1,19 +1,55 @@
 package com.stockyard.gateway.routing
 
+import com.stockyard.gateway.auth.AuthService
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 
 /**
- * Stubs. Реальный flow реализуется в TASK-005, когда core-service публикует
- * `POST /internal/users` и `POST /internal/auth`.
- *
+ * `/v1/auth/{register,login,refresh}` — реальный auth-flow (TASK-005).
  * Контракты см. docs/architecture/05-communication.md §5.3.2.
  */
-fun Route.authRoutes() {
+fun Route.authRoutes(auth: AuthService) {
     route("/v1/auth") {
-        post("/register") { throw NotImplementedError("POST /v1/auth/register coming in TASK-005") }
-        post("/login")    { throw NotImplementedError("POST /v1/auth/login coming in TASK-005") }
-        post("/refresh")  { throw NotImplementedError("POST /v1/auth/refresh coming in TASK-005") }
+        post("/register") {
+            val req = call.receive<RegisterRequest>()
+            val result = auth.register(req.email, req.password)
+            call.respond(
+                HttpStatusCode.Created,
+                RegisterResponse(
+                    userId = result.userId,
+                    accessToken = result.tokens.accessToken,
+                    refreshToken = result.tokens.refreshToken,
+                    expiresIn = result.tokens.expiresIn,
+                ),
+            )
+        }
+        post("/login") {
+            val req = call.receive<LoginRequest>()
+            val tokens = auth.login(req.email, req.password)
+            call.respond(
+                HttpStatusCode.OK,
+                TokenPairResponse(
+                    accessToken = tokens.accessToken,
+                    refreshToken = tokens.refreshToken,
+                    expiresIn = tokens.expiresIn,
+                ),
+            )
+        }
+        post("/refresh") {
+            val req = call.receive<RefreshRequest>()
+            val tokens = auth.refresh(req.refreshToken)
+            call.respond(
+                HttpStatusCode.OK,
+                TokenPairResponse(
+                    accessToken = tokens.accessToken,
+                    refreshToken = tokens.refreshToken,
+                    expiresIn = tokens.expiresIn,
+                ),
+            )
+        }
     }
 }

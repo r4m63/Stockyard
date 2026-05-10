@@ -47,6 +47,9 @@ dependencies {
     // Auth (JWT issue/verify)
     implementation(libs.java.jwt)
 
+    // ULID для jti (TASK-005 — session/refresh ids)
+    implementation(libs.ulidj)
+
     // Redis (Lettuce + commons-pool2 для GenericObjectPool — см. 12-storage-operations §12.2.3)
     implementation(libs.lettuce.core)
     implementation(libs.commons.pool2)

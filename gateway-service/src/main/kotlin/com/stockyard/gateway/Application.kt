@@ -1,6 +1,8 @@
 package com.stockyard.gateway
 
+import com.stockyard.gateway.auth.AuthService
 import com.stockyard.gateway.auth.JwtVerifiers
+import com.stockyard.gateway.auth.SessionStore
 import com.stockyard.gateway.client.CoreServiceClient
 import com.stockyard.gateway.config.installPlugins
 import com.stockyard.gateway.config.loadAppConfig
@@ -43,6 +45,8 @@ fun Application.module() {
     val redis = RedisModule(config.redis)
     val coreClient = CoreServiceClient(config.coreService)
     val jwtVerifiers = JwtVerifiers(config.jwt)
+    val sessionStore = SessionStore(redis)
+    val authService = AuthService(coreClient, jwtVerifiers, sessionStore, config.jwt)
     val wsHub = WsHub()
 
     monitor.subscribe(ApplicationStopping) {
@@ -55,7 +59,7 @@ fun Application.module() {
 
     routing {
         healthRoutes(redis, coreClient)
-        authRoutes()
+        authRoutes(authService)
         ordersRoutes()
         portfolioRoutes()
         instrumentsRoutes()

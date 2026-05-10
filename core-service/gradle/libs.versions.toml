@@ -22,6 +22,7 @@ hikari = "6.0.0"
 flyway = "10.20.1"
 clickhouse-jdbc = "0.7.0"
 argon2 = "2.11"
+ulidj = "1.0.4"
 micrometer-prometheus = "1.13.6"
 
 [libraries]
@@ -48,6 +49,7 @@ flyway-core                     = { module = "org.flywaydb:flyway-core",        
 flyway-postgresql               = { module = "org.flywaydb:flyway-database-postgresql",   version.ref = "flyway" }
 clickhouse-jdbc                 = { module = "com.clickhouse:clickhouse-jdbc",            version.ref = "clickhouse-jdbc" }
 argon2                          = { module = "de.mkammerer:argon2-jvm",                   version.ref = "argon2" }
+ulidj                           = { module = "io.azam.ulidj:ulidj",                       version.ref = "ulidj" }
 micrometer-prometheus           = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "micrometer-prometheus" }
 
 otel-bom                        = { module = "io.opentelemetry:opentelemetry-bom",          version.ref = "otel" }
