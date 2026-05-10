@@ -157,6 +157,69 @@ class CoreServiceClient(private val cfg: CoreServiceConfig) : AutoCloseable {
         return resp.body()
     }
 
+    // ---- TASK-007: read-side API ----
+
+    /** GET /internal/users/{userId}/portfolio → balance + positions. */
+    suspend fun getPortfolio(userId: String): InternalPortfolioDto {
+        val resp = http.get("${cfg.baseUrl}/internal/users/$userId/portfolio")
+        if (resp.status.value != 200) throw CoreServiceException("getPortfolio failed: HTTP ${resp.status.value}")
+        return resp.body()
+    }
+
+    /**
+     * GET /internal/quotes/{ticker} → текущая котировка.
+     * Sealed [QuoteResult]: Found / NotFound (404) / Unavailable (422 NO_QUOTE_AVAILABLE).
+     */
+    suspend fun getQuote(ticker: String): QuoteResult {
+        val resp = http.get("${cfg.baseUrl}/internal/quotes/$ticker")
+        return when (resp.status.value) {
+            200 -> QuoteResult.Found(resp.body<InternalQuoteDto>())
+            404 -> QuoteResult.NotFound(ticker)
+            422 -> {
+                val code = readErrorCode(resp.body<JsonElement>())
+                if (code == "NO_QUOTE_AVAILABLE") QuoteResult.Unavailable(ticker)
+                else throw CoreServiceException("getQuote unexpected 422: $code")
+            }
+            else -> throw CoreServiceException("getQuote failed: HTTP ${resp.status.value}")
+        }
+    }
+
+    /**
+     * GET /internal/quotes/{ticker}/history → свечи. Sealed [HistoryResult].
+     */
+    suspend fun getQuoteHistory(
+        ticker: String,
+        from: String,
+        to: String,
+        interval: String,
+    ): HistoryResult {
+        val resp = http.get("${cfg.baseUrl}/internal/quotes/$ticker/history") {
+            parameter("from", from)
+            parameter("to", to)
+            parameter("interval", interval)
+        }
+        return when (resp.status.value) {
+            200 -> HistoryResult.Ok(resp.body<InternalCandlesDto>())
+            404 -> HistoryResult.NotFound(ticker)
+            422 -> {
+                val code = readErrorCode(resp.body<JsonElement>())
+                when (code) {
+                    "INVALID_INTERVAL" -> HistoryResult.InvalidInterval(interval)
+                    "INVALID_TIME_RANGE" -> HistoryResult.InvalidRange("from/to/interval")
+                    else -> throw CoreServiceException("getQuoteHistory unexpected 422: $code")
+                }
+            }
+            else -> throw CoreServiceException("getQuoteHistory failed: HTTP ${resp.status.value}")
+        }
+    }
+
+    /** GET /internal/instruments → каталог. */
+    suspend fun listInstruments(): InternalInstrumentsDto {
+        val resp = http.get("${cfg.baseUrl}/internal/instruments")
+        if (resp.status.value != 200) throw CoreServiceException("listInstruments failed: HTTP ${resp.status.value}")
+        return resp.body()
+    }
+
     private fun readErrorCode(body: JsonElement): String? =
         runCatching { body.jsonObject["error"]?.jsonObject?.get("code")?.jsonPrimitive?.content }.getOrNull()
 
@@ -229,3 +292,73 @@ data class InternalListOrdersResponse(
     val items: List<InternalOrderDto>,
     val nextCursor: String? = null,
 )
+
+// ---- TASK-007: read-side DTOs ----
+
+@Serializable
+data class InternalBalanceDto(val amountCents: Long, val currency: String)
+
+@Serializable
+data class InternalPositionDto(
+    val ticker: String,
+    val qty: Int,
+    val avgPriceCents: Long,
+    val currentPriceCents: Long? = null,
+    val unrealizedPnlCents: Long? = null,
+)
+
+@Serializable
+data class InternalPortfolioDto(
+    val balance: InternalBalanceDto,
+    val positions: List<InternalPositionDto>,
+)
+
+@Serializable
+data class InternalQuoteDto(
+    val ticker: String,
+    val bidCents: Long,
+    val askCents: Long,
+    val lastCents: Long,
+    val ts: String,
+)
+
+@Serializable
+data class InternalCandleDto(
+    val ts: String,
+    val openCents: Long,
+    val highCents: Long,
+    val lowCents: Long,
+    val closeCents: Long,
+    val volume: Long,
+)
+
+@Serializable
+data class InternalCandlesDto(
+    val ticker: String,
+    val interval: String,
+    val candles: List<InternalCandleDto>,
+)
+
+@Serializable
+data class InternalInstrumentItem(
+    val ticker: String,
+    val name: String,
+    val type: String,
+    val lotSize: Int,
+)
+
+@Serializable
+data class InternalInstrumentsDto(val items: List<InternalInstrumentItem>)
+
+sealed interface QuoteResult {
+    data class Found(val quote: InternalQuoteDto) : QuoteResult
+    data class NotFound(val ticker: String) : QuoteResult
+    data class Unavailable(val ticker: String) : QuoteResult
+}
+
+sealed interface HistoryResult {
+    data class Ok(val payload: InternalCandlesDto) : HistoryResult
+    data class NotFound(val ticker: String) : HistoryResult
+    data class InvalidInterval(val raw: String) : HistoryResult
+    data class InvalidRange(val reason: String) : HistoryResult
+}

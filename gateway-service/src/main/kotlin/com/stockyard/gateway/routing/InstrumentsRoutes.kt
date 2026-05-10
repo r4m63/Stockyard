@@ -1,9 +1,35 @@
 package com.stockyard.gateway.routing
 
+import com.stockyard.gateway.client.CoreServiceClient
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.auth.authenticate
+import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.route
 
-/** Stub. Реальный flow — TASK-007. См. 05-communication.md §5.3.2 (Каталог инструментов). */
-fun Route.instrumentsRoutes() {
-    get("/v1/instruments") { throw NotImplementedError("GET /v1/instruments coming in TASK-007") }
+/**
+ * `/v1/instruments` — каталог тикеров (TASK-007).
+ */
+fun Route.instrumentsRoutes(coreClient: CoreServiceClient) {
+    authenticate("auth-jwt") {
+        route("/v1/instruments") {
+            get {
+                val payload = coreClient.listInstruments()
+                call.respond(
+                    HttpStatusCode.OK,
+                    InstrumentsResponse(
+                        items = payload.items.map {
+                            InstrumentDto(
+                                ticker = it.ticker,
+                                name = it.name,
+                                type = it.type,
+                                lotSize = it.lotSize,
+                            )
+                        },
+                    ),
+                )
+            }
+        }
+    }
 }

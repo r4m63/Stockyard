@@ -61,9 +61,9 @@ fun Application.module() {
         healthRoutes(redis, coreClient)
         authRoutes(authService)
         ordersRoutes(coreClient)
-        portfolioRoutes()
-        instrumentsRoutes()
-        quotesRoutes()
+        portfolioRoutes(coreClient)
+        instrumentsRoutes(coreClient)
+        quotesRoutes(coreClient)
         wsRoutes(wsHub)
     }
 }

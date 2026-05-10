@@ -3,12 +3,15 @@ package com.stockyard.gateway.error
 import com.stockyard.gateway.auth.EmailTakenException
 import com.stockyard.gateway.auth.GatewayValidationException
 import com.stockyard.gateway.auth.IdempotencyConflictException
+import com.stockyard.gateway.auth.InstrumentNotFoundException
 import com.stockyard.gateway.auth.InsufficientFundsException
 import com.stockyard.gateway.auth.InsufficientPositionException
 import com.stockyard.gateway.auth.InvalidCredentialsException
+import com.stockyard.gateway.auth.InvalidIntervalException
 import com.stockyard.gateway.auth.InvalidQuantityException
 import com.stockyard.gateway.auth.InvalidRefreshTokenException
 import com.stockyard.gateway.auth.InvalidTickerException
+import com.stockyard.gateway.auth.InvalidTimeRangeException
 import com.stockyard.gateway.auth.MissingIdempotencyKeyException
 import com.stockyard.gateway.auth.NoQuoteAvailableException
 import com.stockyard.gateway.client.CoreServiceException
@@ -115,6 +118,24 @@ fun Application.installErrorMapping() {
             call.respond(
                 HttpStatusCode.UnprocessableEntity,
                 ApiErrorBody(ApiError("NO_QUOTE_AVAILABLE", cause.message ?: "no quote")),
+            )
+        }
+        exception<InstrumentNotFoundException> { call, cause ->
+            call.respond(
+                HttpStatusCode.NotFound,
+                ApiErrorBody(ApiError("INSTRUMENT_NOT_FOUND", cause.message ?: "instrument not found")),
+            )
+        }
+        exception<InvalidIntervalException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(ApiError("INVALID_INTERVAL", cause.message ?: "invalid interval")),
+            )
+        }
+        exception<InvalidTimeRangeException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(ApiError("INVALID_TIME_RANGE", cause.message ?: "invalid time range")),
             )
         }
         exception<CoreServiceException> { call, cause ->
