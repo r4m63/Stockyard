@@ -8,11 +8,19 @@ import com.stockyard.core.api.userApi
 import com.stockyard.core.auth.PasswordHasher
 import com.stockyard.core.config.installPlugins
 import com.stockyard.core.config.loadAppConfig
+import com.stockyard.core.domain.account.AccountRepository
+import com.stockyard.core.domain.instrument.InstrumentRepository
+import com.stockyard.core.domain.order.OrderRepository
+import com.stockyard.core.domain.order.OrderService
+import com.stockyard.core.domain.position.PositionRepository
+import com.stockyard.core.domain.transaction.TransactionRepository
 import com.stockyard.core.domain.user.UserRepository
 import com.stockyard.core.domain.user.UserService
 import com.stockyard.core.persistence.DataSources
 import com.stockyard.core.persistence.FlywayBootstrap
 import com.stockyard.core.persistence.TransactionManager
+import com.stockyard.core.quotes.DevPriceFixture
+import com.stockyard.core.quotes.QuotesPort
 import com.stockyard.core.redis.RedisModule
 import com.stockyard.core.routing.healthRoutes
 import io.ktor.server.application.Application
@@ -43,19 +51,54 @@ fun Application.module() {
         .addKeyValue("service.name", config.otel.serviceName)
         .addKeyValue("pg.host", config.postgres.host)
         .addKeyValue("redis.url", config.redis.url)
+        .addKeyValue("devFixture.enabled", config.devFixture.enabled)
         .log("Bootstrapping core-service")
 
     val dataSources = DataSources(config.postgres, config.clickhouse)
     val redis = RedisModule(config.redis)
     val passwordHasher = PasswordHasher(config.argon2.pepper.toByteArray(Charsets.UTF_8))
     val txManager = TransactionManager(dataSources.pg)
-    val userService = UserService(UserRepository(), txManager, passwordHasher)
+
+    // Repositories — все stateless, делятся через DI.
+    val userRepo = UserRepository()
+    val instrumentRepo = InstrumentRepository()
+    val orderRepo = OrderRepository()
+    val positionRepo = PositionRepository()
+    val accountRepo = AccountRepository()
+    val transactionRepo = TransactionRepository()
+
+    val userService = UserService(userRepo, txManager, passwordHasher)
+    val quotesPort = QuotesPort(redis)
+    val orderService = OrderService(
+        tx = txManager,
+        instruments = instrumentRepo,
+        orders = orderRepo,
+        accounts = accountRepo,
+        positions = positionRepo,
+        transactions = transactionRepo,
+        quotes = quotesPort,
+    )
 
     // Flyway migration ДО открытия HTTP-сокета. Падение здесь = провал старта Ktor.
     FlywayBootstrap.migrate(dataSources.pg)
 
+    // TODO(TASK-008): удалить DevPriceFixture после реализации Quotes Service.
+    val devFixture: DevPriceFixture? = if (config.devFixture.enabled) {
+        DevPriceFixture(
+            redis = redis,
+            instrumentRepo = instrumentRepo,
+            pgDs = dataSources.pg,
+            intervalSec = config.devFixture.intervalSec,
+            jitterPercent = config.devFixture.jitterPercent,
+        ).also { it.start() }
+    } else {
+        log.info("DevPriceFixture disabled (production-like mode)")
+        null
+    }
+
     monitor.subscribe(ApplicationStopping) {
-        log.info("Shutdown: closing DataSources and Redis connections")
+        log.info("Shutdown: closing DevPriceFixture, DataSources and Redis connections")
+        runCatching { devFixture?.stop() }
         runCatching { dataSources.close() }
         runCatching { redis.close() }
     }
@@ -65,7 +108,7 @@ fun Application.module() {
     routing {
         healthRoutes(dataSources, redis, prometheusRegistry)
         userApi(userService)
-        orderApi()
+        orderApi(orderService)
         portfolioApi()
         instrumentApi()
         quotesApi()
