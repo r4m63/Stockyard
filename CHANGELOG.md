@@ -19,6 +19,22 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+---
+
+## [0.3.0] - 2026-05-11
+
+### Added
 - Core Service (Kotlin/Ktor) — internal HTTP сервис на `:8080` (host `:8081`):
   - `GET /health/live` всегда `200 {"status":"UP"}`.
   - `GET /health/ready` проверяет PostgreSQL (`SELECT 1`) и Redis (`PING`) как блокирующие; ClickHouse info-only (DOWN не делает unhealthy).
@@ -82,6 +98,7 @@ Compare links — обновляются автоматически /committer r
 Замени <org>/<repo> на реальный путь после публикации репозитория.
 -->
 
-[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/r4m63/Stockyard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/r4m63/Stockyard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/r4m63/Stockyard/releases/tag/v0.1.0
