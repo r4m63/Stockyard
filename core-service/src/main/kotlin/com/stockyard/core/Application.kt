@@ -8,6 +8,8 @@ import com.stockyard.core.api.userApi
 import com.stockyard.core.auth.PasswordHasher
 import com.stockyard.core.config.installPlugins
 import com.stockyard.core.config.loadAppConfig
+import com.stockyard.core.domain.user.UserRepository
+import com.stockyard.core.domain.user.UserService
 import com.stockyard.core.persistence.DataSources
 import com.stockyard.core.persistence.FlywayBootstrap
 import com.stockyard.core.persistence.TransactionManager
@@ -45,10 +47,9 @@ fun Application.module() {
 
     val dataSources = DataSources(config.postgres, config.clickhouse)
     val redis = RedisModule(config.redis)
-    @Suppress("unused") // TASK-005 wire-up
     val passwordHasher = PasswordHasher(config.argon2.pepper.toByteArray(Charsets.UTF_8))
-    @Suppress("unused") // TASK-005/006 wire-up
     val txManager = TransactionManager(dataSources.pg)
+    val userService = UserService(UserRepository(), txManager, passwordHasher)
 
     // Flyway migration ДО открытия HTTP-сокета. Падение здесь = провал старта Ktor.
     FlywayBootstrap.migrate(dataSources.pg)
@@ -63,7 +64,7 @@ fun Application.module() {
 
     routing {
         healthRoutes(dataSources, redis, prometheusRegistry)
-        userApi()
+        userApi(userService)
         orderApi()
         portfolioApi()
         instrumentApi()
