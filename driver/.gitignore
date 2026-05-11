@@ -1,0 +1,18 @@
+# kbuild artefacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.cmd
+*.symvers
+*.order
+.tmp_versions/
+modules.builtin
+modules.builtin.modinfo
+
+# userspace test binaries
+test/test_read
+test/test_ioctl
+test/test_layout
+test/test_errors
