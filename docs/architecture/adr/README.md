@@ -15,6 +15,7 @@
 | [ADR-007](ADR-007-idempotency-key-retention.md) | Proposed | Idempotency-keys хранятся бессрочно вместе с ордером |
 | [ADR-008](ADR-008-pg-no-partitioning-mvp.md) | Proposed | PostgreSQL — без партиционирования `orders`/`transactions` в MVP |
 | [ADR-009](ADR-009-gradle-single-module.md) | Proposed | Gradle: single-module per backend service, без composite build |
+| [ADR-015](ADR-015-driver-loading-host-side.md) | Accepted | Stockyard driver грузится на хосте (skript), не из docker-init-контейнера |
 
 ## Шаблон ADR
 
