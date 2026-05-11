@@ -297,20 +297,26 @@ GET /internal/users/u_abc123/portfolio
 
 ### 5.5.1. Драйвер → Quotes Service
 
-Бинарный формат, packed struct (см. [03-components](03-components.md)):
+Бинарный формат, packed struct, little-endian. Один тик — **44 байта**.
+Layout:
 
 ```c
 struct stockyard_tick {
-    char     ticker[8];    // null-padded
-    uint64_t ts_ns;
-    int64_t  bid_cents;
-    int64_t  ask_cents;
-    int64_t  last_cents;
-    uint32_t volume;
+    char     ticker[8];    // offset  0, null-padded ASCII
+    uint64_t ts_ns;        // offset  8, CLOCK_MONOTONIC
+    int64_t  bid_cents;    // offset 16
+    int64_t  ask_cents;    // offset 24
+    int64_t  last_cents;   // offset 32
+    uint32_t volume;       // offset 40
 } __attribute__((packed));
+// sizeof(struct stockyard_tick) == 44
 ```
 
-Quotes Service делает блокирующий `read()` и парсит каждый тик.
+Квоты Service делает блокирующий `read()` кратными 44 байтам;
+неправильный размер запроса → `-EINVAL`. См. также
+[TASK-008 ledger](../../.claude/tasks/TASK-008-c-driver.md) — там
+зафиксированы ioctl-коды для конфигурации (`SET_TICKERS`,
+`SET_RATE_HZ`, `GET_STATS`, `RESET`).
 
 ### 5.5.2. Quotes Service → Redis
 
