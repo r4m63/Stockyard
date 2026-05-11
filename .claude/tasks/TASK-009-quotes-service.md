@@ -3,8 +3,8 @@
 ## Meta
 - ID: TASK-009
 - Created: 2026-05-11T18:00:00Z
-- Last updated: 2026-05-12T03:00:00Z
-- Stage: committed
+- Last updated: 2026-05-12T03:10:00Z
+- Stage: pushed
 - Touched roles: architect, backend, tester, reviewer, committer
 
 ## Original Request
@@ -528,3 +528,4 @@ case f.CH <- t:
 - 2026-05-12T02:00:00Z: /tester (re-pass) — добавлены 3 regression-кейса:<br>**`TestCentsToDecimal_Overflow`** (`payload_test.go`) — 3 subtests: 1e17 cents, max int64, min int64. Сравнивает с `new(big.Int).Mul(big.NewInt(cents), big.NewInt(100))` — поймал бы H1 при revert'е.<br>**`TestLoad_EmptyEnvvar`** (`config_test.go`) — `STOCKYARD_HEALTH_PORT=""` + 3 других empty → default 8080/1000/0. Поймал бы M1 при revert'е.<br>**`TestFanout_DroppedCHCounterBumps`** (`fanout_test.go`) — pre-fill CH chan (cap=1, no reader) → push tick → cancel ctx → DroppedCH == 1. Поймал бы M4 при revert'е счётчика.<br>**Total: 20 unit cases PASS** (было 18). Coverage pipeline 91.7% → **100%** (новая ветка покрыта). Остальные пакеты без изменений. Все 9 backend fix'ов работают как заявлено. Suggested next: `/reviewer TASK-009` round 2 для финального PASS gate'а.
 - 2026-05-12T02:30:00Z: /reviewer (round 2) — **gate: PASS** (0 critical, 0 high, 0 medium, 0 new low). Все 9 round-1 findings closed в коде (verified line-by-line против actual code). H1: big.Int multiplication; H2: TxPipeline; M1: empty envvar guard; M2: defer cancel; M3: unified flushOnce; M4: DroppedCH wired полностью; L2/L5/L6 — закрыты. 3 regression-теста валидны (`TestCentsToDecimal_Overflow` имеет secondary sign-check guard). Shutdown chain (forwarder/reader/close races) — verified safe. F2/L4 (IT) + F3/L1 (reopen counter) accepted as deferred to TASK-011. L3 sentinel — overflow-safe (подтверждение). Stack/money/security clean. Готово к merge. Suggested next: `/committer TASK-009`.
 - 2026-05-12T03:00:00Z: /committer — branch `feature/9-quotes-service` (from `feature/8-c-driver` HEAD, потому что TASK-008 ledger ещё не в main), 9 commits: `3deab79` chore(claude) tooling (sy + ship), `e2c6dbc` feat(quotes) skeleton, `2262102` feat(quotes) reader, `3b42744` feat(quotes) fanout+sinks, `bda18cc` feat(quotes) health+telemetry, `e54d108` feat(quotes) main wiring, `163332f` test(quotes) 20 unit cases, `38915b3` docs(task) TASK-009 ledger, `b0b487b` docs(changelog). CHANGELOG `[Unreleased] → Added` пополнен — Quotes Service запись с 8 Prometheus метриками. Working tree clean. Suggested next: `/committer push` после merge TASK-008 PR (так как ветка зависит от feature/8).
+- 2026-05-12T03:10:00Z: /committer push — TASK-008 PR #6 merged в main (`4e6cd28`), merge-base feature/9 vs origin/main = `3916726` (TASK-008 HEAD) → PR diff показывает ровно 10 TASK-009 коммитов (включая handoff-update `cd5ad57`). Push `--set-upstream origin/feature/9-quotes-service`. PR URL: https://github.com/r4m63/Stockyard/pull/new/feature/9-quotes-service.
