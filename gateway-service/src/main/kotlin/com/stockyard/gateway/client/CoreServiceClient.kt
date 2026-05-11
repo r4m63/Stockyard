@@ -87,7 +87,7 @@ class CoreServiceClient(private val cfg: CoreServiceConfig) : AutoCloseable {
 
     /**
      * POST /internal/orders — размещение ордера в core.
-     * Sealed [PlaceOrderResult]: бизнес-исходы (Created/Rejected*/InvalidTicker/…/Idempotency)
+     * Sealed [PlaceOrderResult]: бизнес-исходы (Created/Rejected.../InvalidTicker/.../Idempotency)
      * через типы, инфраструктурные ошибки (5xx/timeouts) — через [CoreServiceException].
      */
     suspend fun placeOrder(
