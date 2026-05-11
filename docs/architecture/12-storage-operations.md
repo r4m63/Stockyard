@@ -180,14 +180,23 @@ Volume 20 GB — десятикратный запас от объёма год�
 
 ## 12.2. Redis / KeyDB — operations
 
-### 12.2.0. DevPriceFixture (временный writer `quotes:*` и `quotes_ticks` до TASK-008)
+### 12.2.0. Writer контракта `quotes:*` / `quotes_ticks` — Quotes Service
 
-До реализации Quotes Service (TASK-008) единственный writer `quotes:{ticker}` HASH в Redis **и** `quotes_ticks` в ClickHouse — это `DevPriceFixture` в Core Service. Он стартует в `Application.module()` если `STOCKYARD_DEV_FIXTURE=true` (default `true` в dev), читает 50 тикеров из `instruments` и каждые 5 секунд:
+После TASK-011 единственный writer:
 
-1. Обновляет `HSET quotes:{ticker} bid ask last ts` (для `GET /v1/quotes/{ticker}` и расчёта current price в портфеле).
-2. Делает batch `INSERT INTO quotes_ticks (ticker, ts, bid, ask, last, volume)` через ClickHouse JDBC. Materialized View `quotes_candles_1m_mv` автоматически агрегирует свечи (нужно для `GET /v1/quotes/{ticker}/history`).
+- `quotes:{ticker}` HASH в Redis (поля `ts / ts_ns / bid / ask / last / volume`, all cents-integer как строки),
+- `channel:quotes:{ticker}` PUBLISH с JSON-payload в cents (ADR-011),
+- `stream:quotes` XADD с `MAXLEN ~ 100000`,
+- `quotes_ticks` в ClickHouse (batch ≥ 1 сек / ≥ 1000 строк, §12.3),
 
-В prod-like окружении выключается через `STOCKYARD_DEV_FIXTURE=false`. Удаляется одним коммитом после TASK-008 (Quotes Service полностью замещает оба write-канала).
+— это **Quotes Service** (`quotes-service/`, Go). Он читает биржу из
+`/dev/stockyard` (C-driver TASK-008), сериализует тик и пишет в Redis
+синхронно, а в ClickHouse — батчем. Core Service потребляет данные
+только на чтение через `QuotesPort.getQuote` (HGETALL) — он больше не
+держит фоновый таймер и не имеет ClickHouse-writer.
+
+Исторический временный writer `DevPriceFixture` удалён в TASK-011
+вместе с конфигом `stockyard.devFixture.*` / `STOCKYARD_DEV_FIXTURE=*`.
 
 ### 12.2.1. Один или два инстанса
 

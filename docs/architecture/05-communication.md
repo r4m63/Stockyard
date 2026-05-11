@@ -123,30 +123,41 @@ Authorization: Bearer <JWT>
 
 #### Котировки
 
+Все денежные поля — `Long` cents (ADR-011), без потерь точности. Все
+REST-эндпоинты `/v1/quotes/*` обёрнуты в `auth-jwt` (§5.3.1), поэтому
+`Authorization: Bearer <JWT>` — обязательный заголовок.
+
 ```http
 GET /v1/quotes/SBER
+Authorization: Bearer <JWT>
 
 → 200 OK
 {
-  "ticker": "SBER",
-  "ts": "2026-05-09T12:34:56.789Z",
-  "bid": 285.50,
-  "ask": 285.70,
-  "last": 285.60,
-  "volume": 12345
+  "ticker":    "SBER",
+  "ts":        "2026-05-09T12:34:56.789Z",
+  "bidCents":  28550,
+  "askCents":  28570,
+  "lastCents": 28560
 }
 ```
 
 ```http
 GET /v1/quotes/SBER/history?from=2026-05-09T00:00Z&to=2026-05-09T23:59Z&interval=1m
+Authorization: Bearer <JWT>
 
 → 200 OK
 {
-  "ticker": "SBER",
+  "ticker":   "SBER",
   "interval": "1m",
   "candles": [
-    {"ts": "...", "open": ..., "high": ..., "low": ..., "close": ..., "volume": ...},
-    ...
+    {
+      "ts":         "2026-05-09T12:34:00Z",
+      "openCents":  28540,
+      "highCents":  28590,
+      "lowCents":   28510,
+      "closeCents": 28560,
+      "volume":     12345
+    }
   ]
 }
 ```
@@ -207,7 +218,10 @@ Authorization: Bearer <JWT>
 
 ### 5.3.3. WebSocket-протокол
 
-Подключение: `wss://stockyard.example/v1/ws?token=<JWT>` (или `Authorization: Bearer` через subprotocol).
+Подключение: `wss://stockyard.example/v1/ws/quotes?token=<JWT>` (или
+`Authorization: Bearer` через subprotocol). Endpoint TASK-010-реализован
+именно как `/v1/ws/quotes`; исторический `/v1/ws` без суффикса в коде
+не существует.
 
 #### Сообщения от клиента
 
@@ -219,13 +233,19 @@ Authorization: Bearer <JWT>
 
 #### Сообщения от сервера
 
+Все денежные значения — `Long` cents (ADR-011), без потерь точности.
+
 ```json
 // Тик котировки
 {
-  "type": "quote",
-  "ticker": "SBER",
-  "ts": "2026-05-09T12:34:56.789Z",
-  "bid": 285.50, "ask": 285.70, "last": 285.60
+  "type":      "quote",
+  "ticker":    "SBER",
+  "ts":        "2026-05-09T12:34:56.789Z",
+  "tsNs":      1746793096789012345,
+  "bidCents":  28550,
+  "askCents":  28570,
+  "lastCents": 28560,
+  "volume":    12345
 }
 
 // Подтверждение подписки
@@ -238,10 +258,21 @@ Authorization: Bearer <JWT>
 { "type": "pong" }
 ```
 
+#### Коды ошибок WS (`type:"error"`)
+
+| code | смысл |
+|---|---|
+| `INVALID_TICKER` | тикер не из каталога |
+| `INVALID_FRAME` | невалидный JSON / неизвестный `action` |
+| `SUBSCRIPTION_LIMIT` | клиент превысил лимит подписок (см. §8.4) |
+| `UNAUTHORIZED` | JWT отсутствует/просрочен — отдельным `close 1008` |
+
 #### Контракт надёжности
 
 - Сервер отправляет `pong` каждые 30 секунд; клиент должен отвечать на `ping`.
 - Если клиент не присылает ничего > 60 сек — соединение закрывается с кодом `1008`.
+- При падении Redis Pub/Sub сервер закрывает сокет кодом `1011`; клиент
+  переподключается с backoff (S8).
 - Backpressure: если клиент медленно читает, сервер дропает старые тики (не блокирует publisher).
 
 ---
@@ -320,17 +351,18 @@ struct stockyard_tick {
 
 ### 5.5.2. Quotes Service → Redis
 
-Каждый тик публикуется тремя путями:
+Каждый тик публикуется тремя путями. Денежные поля — целые cents (ADR-011);
+HASH-значения — десятичные строки, JSON-поля — числа.
 
 ```
-PUBLISH channel:quotes:SBER  '{"ts":"...","bid":285.50,"ask":285.70,"last":285.60}'
-HSET    quotes:SBER  ts ... bid 285.50 ask 285.70 last 285.60 volume 12345
-XADD    stream:quotes  *  ticker SBER  ts ...  bid ...  ask ...  last ...
+PUBLISH channel:quotes:SBER  '{"ticker":"SBER","ts":"...","tsNs":...,"bidCents":28550,"askCents":28570,"lastCents":28560,"volume":12345}'
+HSET    quotes:SBER          ts "..."  ts_ns ...  bid 28550  ask 28570  last 28560  volume 12345
+XADD    stream:quotes        MAXLEN ~ 100000  *  ticker SBER  ts_ns ...  bid 28550  ask 28570  last 28560  volume 12345
 ```
 
 - `PUBLISH` — fanout без durability (горячая шина для Gateway).
 - `HSET` — последняя котировка для синхронных читателей (Core Service при исполнении ордеров).
-- `XADD` — durable backup на случай, если кто-то хочет догнать пропущенное.
+- `XADD` — durable backup на случай, если кто-то хочет догнать пропущенное; `MAXLEN ~ 100000` чтобы не разрастаться.
 
 ### 5.5.3. Quotes Service → ClickHouse
 
