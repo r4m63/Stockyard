@@ -26,7 +26,9 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux \
-    go build -trimpath -ldflags="-s -w" -o /out/quotes ./cmd/quotes
+    go build -trimpath -ldflags="-s -w" -o /out/quotes ./cmd/quotes && \
+    CGO_ENABLED=0 GOOS=linux \
+    go build -trimpath -ldflags="-s -w" -o /out/healthcheck ./cmd/healthcheck
 
 # ----------------------------------------------------------------------
 
@@ -34,6 +36,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /
 COPY --from=builder /out/quotes /quotes
+COPY --from=builder /out/healthcheck /healthcheck
 
 USER nonroot:nonroot
 
