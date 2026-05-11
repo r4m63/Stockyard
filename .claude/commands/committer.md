@@ -30,6 +30,7 @@ $ARGUMENTS
 | Релиз с авто-определением | `/committer release auto` | проанализировать commits с последнего тега, выбрать MAJOR/MINOR/PATCH, обновить VERSION, зафиксировать `[Unreleased]` как `[X.Y.Z]`, создать tag `vX.Y.Z` |
 | Релиз вручную | `/committer release patch|minor|major` | то же, но bump жёстко указан |
 | Pre-release | `/committer release prerelease alpha|beta|rc` | bump в `X.Y.Z-alpha.N` |
+| **Ship — одной командой** | `/committer ship TASK-NNN` | **показать полное превью** (все будущие коммиты + push + опц. release+tag) и выполнить всю цепочку после одного `y`. Авто-режим: на feature-ветке = commit + push; на main = release auto + push + push --tags. |
 | Свободная операция | `/committer <запрос>` | rebase, cherry-pick, revert, log, blame и т.д. |
 
 ---
@@ -94,6 +95,145 @@ git diff --stat
 
 - Делай запрошенную git-операцию (rebase, cherry-pick, revert, log, diff, blame и т.д.).
 - ВСЕГДА показывай команду которую собираешься выполнить ДО запуска (если она destructive).
+
+#### Режим F: `$ARGUMENTS` начинается с `ship TASK-NNN`
+
+**Цель.** Свернуть «закоммитить → запушить → (на main) release + tag → запушить теги» в одно действие с **единственным confirm gate**. Пользователь видит весь будущий план ДО любой git-записи, говорит `y` один раз, дальше — выполнение без дополнительных prompt'ов.
+
+##### F.1. Pre-flight (refuse, если не подходит)
+
+1. **Найти ledger** `.claude/tasks/TASK-NNN-*.md`. Если нет — refuse: «run `/architect` first».
+2. Прочитать `Meta → Stage`. Допустимые значения:
+   - `tested`, `committed`, `pushed`, `done` → OK.
+   - `architect-done`, `*-blocked`, `needs-fixes`, `tester-*` без reviewer'а → **refuse** с указанием правильного следующего шага (обычно `/reviewer TASK-NNN`).
+3. Проверить `git status --short`. Если в working tree есть изменения файлов, **не связанные с этой TASK-NNN** (не упоминаются в ledger'е) → refuse, попросить stash/commit чужого.
+4. Проверить `git tag -l v<new>` если предполагается release-ship — если тег уже существует, refuse.
+
+##### F.2. Auto-detection режима
+
+```
+current_branch = git branch --show-current
+working_tree   = git status --short
+ahead_commits  = git log v<last_tag>..HEAD (только feat:/fix:/BREAKING)
+unreleased     = содержимое ## [Unreleased] в CHANGELOG.md
+
+Если current_branch ≠ main И (working_tree непустой ИЛИ branch ahead of origin):
+    mode = commit-ship
+Иначе если current_branch == main И working_tree пустой И ahead_commits > 0 И unreleased непустой:
+    mode = release-ship
+Иначе:
+    refuse с одной строкой причиной
+```
+
+##### F.3. Build preview БЕЗ git-записи
+
+**commit-ship preview:**
+
+Постройте план как в Режиме A (Step 4: атомарные коммиты, Angular convention, per-scope разбиение, отдельный `docs(changelog):` коммит если user-visible). Затем:
+
+```
+ship preview — commit-ship  (TASK-NNN)
+─────────────────────────────────────────────
+branch:       feature/<N>-<slug>   (будет создана если её нет)
+parent:       main @ <sha>
+
+commits planned (N):
+  1. <type>(<scope>): <subject>
+     files: …
+  2. …
+  N. docs(changelog): record TASK-NNN entries in [Unreleased]
+     files: CHANGELOG.md
+
+CHANGELOG [Unreleased] entries:
+  ### Added
+    - …
+
+push:         origin/feature/<N>-<slug>   (--set-upstream)
+tag:          —
+
+proceed? [y/N]
+```
+
+**release-ship preview:**
+
+Вычислить bump как в `release auto` (V.4): MAJOR при BREAKING CHANGE, иначе MINOR при feat, иначе PATCH при fix/perf, иначе **refuse** («со времени `v<last>` нет user-visible»).
+
+```
+ship preview — release-ship
+─────────────────────────────────────────────
+branch:        main
+current:       <текущая версия из VERSION>
+last tag:      v<X.Y.Z>
+commits since: <N>  (feat: <a>, fix: <b>, BREAKING: <c>)
+bump:          MAJOR | MINOR | PATCH
+new version:   <X'.Y'.Z'>
+new tag:       v<X'.Y'.Z'>   (annotated)
+
+release commit:
+  chore(release): v<X'.Y'.Z'>
+
+      Bumps version from <prev> to <new>.
+      Detected <bump> from <a> feat / <b> fix commits.
+
+CHANGELOG section to be finalized as [<X'.Y'.Z'>] - <YYYY-MM-DD>:
+  ### Added
+    - …
+  ### Fixed
+    - …
+
+push:          origin/main
+push tags:     v<X'.Y'.Z'>
+
+proceed? [y/N]
+```
+
+##### F.4. Выполнение (после `y`)
+
+Никаких дополнительных prompt'ов. Цепочка идёт целиком; если шаг падает — STOP, отчёт о том что сделано и что нет.
+
+**commit-ship** последовательно:
+1. `git checkout -b feature/<N>-<slug>` если ветки нет.
+2. Каждый коммит: `git add <files>` + `git commit -m "$(cat <<'EOF' … EOF)"` (HEREDOC, Angular).
+3. Обновить `CHANGELOG.md` `[Unreleased]` (если есть user-visible feat/fix) + `docs(changelog):` коммит.
+4. Обновить ledger handoff log + Meta:`Stage: committed` + `docs(task):` коммит.
+5. `git push --set-upstream origin <branch>` (или `git push` если уже tracked).
+6. Обновить ledger ещё раз: добавить push-entry в handoff log + Meta:`Stage: pushed` + ещё один `docs(task):` коммит и `git push`.
+
+**release-ship** последовательно:
+1. Записать новую версию в `VERSION`.
+2. В `CHANGELOG.md`: переименовать `## [Unreleased]` → `## [X.Y.Z] - YYYY-MM-DD`; вставить свежий пустой `## [Unreleased]` блок выше с 6 стандартными подсекциями; обновить compare-ссылки внизу.
+3. `git add VERSION CHANGELOG.md`.
+4. `git commit -m "$(cat <<'EOF' chore(release): vX.Y.Z … EOF)"`.
+5. `git tag -a vX.Y.Z -m "Release X.Y.Z\n\n<содержимое release-секции changelog>"`.
+6. `git push origin main`.
+7. `git push origin vX.Y.Z`.
+
+##### F.5. Финальный отчёт
+
+```
+shipped (TASK-NNN)
+  mode:     <commit | release>
+  branch:   <name>
+  commits:  <sha-list, short>
+  tag:      <vX.Y.Z if release, else —>
+  remote:   <pushed | up to date>
+```
+
+##### F.6. Safety rules для ship-режима
+
+- **Никогда `--force` push.** Не используется в ship-режиме ни при каких обстоятельствах.
+- **Превью — единственный confirm gate.** На `y` идёт всё, на любой другой ответ — clean cancel без git-записи.
+- **Push в main допустим в release-ship**, и только после превью на этом коммите. Это и есть суть ship-режима. (В Режиме B push в main требует отдельного confirm; здесь он включён в общий y.)
+- **Никаких build-артефактов** в `git add`. Если подозрительный файл попадает в план — STOP, спроси.
+- **Никогда не bypass'ить `/reviewer`.** F.1 проверка `Stage` это гарантирует.
+- **Tags immutable.** Конфликт `v<new>` — refuse, не overwrite.
+- **Одна TASK за один ship.** Если в working tree изменения от нескольких TASK — refuse, разделять.
+
+##### F.7. Когда НЕ использовать ship-режим
+
+- Multi-task PR — лучше отдельные `/committer TASK-NNN` + один `/committer push`.
+- Hotfix с force-push или ручным rebase — ship намеренно не destructive.
+- Частичная работа (Stage `backend-done`, но нет tester/reviewer) — сначала закрой role-chain (`/feature TASK-NNN` или вручную).
 
 ### Step 3 — Создание ветки
 
