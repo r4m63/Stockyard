@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Instant
+import java.time.format.DateTimeFormatter
 import kotlin.random.Random
 
 /**
@@ -27,8 +28,12 @@ import kotlin.random.Random
  * Включается флагом `STOCKYARD_DEV_FIXTURE=true` (HOCON `stockyard.devFixture.enabled`).
  * В prod-like окружении выключается — единственный writer там Quotes Service.
  *
- * TODO(TASK-008): удалить весь класс и wire-up в Application после реализации
- * Driver → Quotes Service → Redis/ClickHouse pipeline.
+ * HSET и PUBLISH следуют frozen C2 контракту из TASK-009: HASH-поля
+ * `ts (ISO-8601 UTC) / ts_ns / bid / ask / last / volume` (cents-integer как
+ * строки), PUBLISH payload — ADR-011 cents-JSON (`bidCents/askCents/lastCents`).
+ *
+ * TODO(TASK-011): удалить весь класс и wire-up в Application после интеграции
+ * Quotes Service в docker-compose.
  */
 class DevPriceFixture(
     private val redis: RedisModule,
@@ -92,17 +97,31 @@ class DevPriceFixture(
 
     private fun writeAll(snapshot: Map<String, Triple<Long, Long, Long>>) {
         val nowInstant = Instant.now()
-        val nowMs = nowInstant.toEpochMilli().toString()
+        val nowIso = DateTimeFormatter.ISO_INSTANT.format(nowInstant)
+        val nowNs = nowInstant.epochSecond * 1_000_000_000L + nowInstant.nano
 
-        // 1) Redis — current quote (HASH).
+        // 1) Redis — current quote (HASH) + PUBLISH per ADR-011 cents-JSON.
+        //    HSET fields match Quotes Service C2: ts / ts_ns / bid / ask / last / volume.
+        //    Raw-string JSON: dev-only, ticker alphanumeric, остальные значения integer/ISO.
         redis.withCommandConnection { conn ->
             val sync = conn.sync()
             snapshot.forEach { (ticker, bidAskLast) ->
                 val (bid, ask, last) = bidAskLast
                 sync.hset(
                     "quotes:$ticker",
-                    mapOf("bid" to bid.toString(), "ask" to ask.toString(), "last" to last.toString(), "ts" to nowMs),
+                    mapOf(
+                        "ts" to nowIso,
+                        "ts_ns" to nowNs.toString(),
+                        "bid" to bid.toString(),
+                        "ask" to ask.toString(),
+                        "last" to last.toString(),
+                        "volume" to "0",
+                    ),
                 )
+                val payload =
+                    """{"ticker":"$ticker","ts":"$nowIso","tsNs":$nowNs,""" +
+                        """"bidCents":$bid,"askCents":$ask,"lastCents":$last,"volume":0}"""
+                sync.publish("channel:quotes:$ticker", payload)
             }
         }
 
