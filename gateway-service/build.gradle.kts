@@ -64,6 +64,7 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotest.assertions)
     testImplementation(libs.mockk)
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation(libs.awaitility.kotlin)
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.client.websockets)
@@ -72,10 +73,23 @@ dependencies {
     testImplementation(libs.testcontainers.junit)
 }
 
+configurations.testImplementation {
+    resolutionStrategy {
+        eachDependency {
+            if (requested.group == "com.github.docker-java") {
+                useVersion("3.4.2")
+            }
+        }
+    }
+}
+
 kotlin {
     jvmToolchain(21)
 }
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("DOCKER_HOST", System.getenv("DOCKER_HOST") ?: "unix:///var/run/docker.sock")
+    systemProperty("api.version.detection.enabled", "false")
+    environment("DOCKER_HOST", System.getenv("DOCKER_HOST") ?: "unix:///var/run/docker.sock")
 }

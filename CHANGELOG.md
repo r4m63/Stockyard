@@ -19,16 +19,23 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+- WebSocket эндпоинт `wss://<gateway>/v1/ws/quotes?token=<JWT>` — потоковая раздача котировок мобильным клиентам. Inbound JSON-фреймы `subscribe / unsubscribe / ping`; outbound `quote / subscribed / unsubscribed / pong / error`. Payload `quote` использует integer cents (`bidCents/askCents/lastCents`, `tsNs`, `volume`) по ADR-011. Контракт надёжности: heartbeat 30s, idle close 60s (1008), max 100 тикеров на соединение (`SUBSCRIPTION_LIMIT`), max 5 соединений на пользователя (close 4002). При подписке клиент получает текущий snapshot из Redis `HGETALL quotes:{ticker}` **до** `subscribed`-ack. (TASK-010)
+- Redis Pub/Sub bridge `QuotesSubscriber` — единая `psubscribe channel:quotes:*` (ADR-013) с in-process реверс-индексом `Map<Ticker, Set<Conn>>` и DROP_OLDEST backpressure на per-conn `Channel<Frame>(256)` (ADR-001 at-most-once). Defensive re-`psubscribe` после Lettuce reconnect через `RedisConnectionStateAdapter` — pattern subscriptions не восстанавливаются автоматически в Lettuce 6.x. (TASK-010)
+- 7 OTel метрик WS-подсистемы: gauge `ws_active_connections` + counters `ws_subscriptions_total`, `ws_frames_sent_total{type}`, `ws_frames_dropped_backpressure_total{type}`, `redis_pubsub_messages_received_total`, `redis_pubsub_parse_errors_total`, `ws_shutdown_leaked_total{reason=timeout|send_failed}`. (TASK-010)
 
 ### Changed
+- `DevPriceFixture` (core-service, dev-only) теперь пишет HASH `quotes:{ticker}` с полями `ts/ts_ns/bid/ask/last/volume` и публикует JSON-payload по ADR-011 cents-JSON формату — выровнено с frozen C2 контрактом Quotes Service. Класс будет удалён в TASK-011 после интеграции Quotes Service в docker-compose. (TASK-010)
+- CallLogging форматтер маскирует `?token=<jwt>` в логах как `?token=REDACTED` — закрывает leak surface для WS handshake на `/v1/ws/quotes` (ADR-014, JWT в query-параметре с short TTL). (TASK-010)
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
+- Gateway-сервис собирается локально с Ktor 2.3.13 / Kotlin 2.0 / commons-pool2 2.12: исправлены 4 pre-existing scaffold-бага TASK-003 (неверный пакет `io.ktor.server.plugins.calllogging` → `callloging`, устаревшие `WebSockets.pingPeriod/timeout` → `pingPeriodMillis/timeoutMillis`, `GenericObjectPoolConfig.maxWait = ...` → `setMaxWait(...)`, `Application.monitor` → `environment.monitor`) и 2 unclosed KDoc-комментария с литералом `*/`, а также добавлены пропущенные `import io.ktor.server.application.call` в 9 routing-файлах. (TASK-010)
 
 ### Security
+- Access-логи Gateway больше не содержат полный JWT при подключении к `/v1/ws/quotes`. Регулярное выражение `([?&])token=[^&]*` подменяет значение токена на `REDACTED`. Митigация для leak surface через прокси-логи и kube-audit. (TASK-010)
 
 ---
 

@@ -1,5 +1,7 @@
 package com.stockyard.gateway.routing
 
+import io.ktor.server.application.call
+
 import com.stockyard.gateway.auth.userId
 import com.stockyard.gateway.client.CoreServiceClient
 import io.ktor.http.HttpStatusCode

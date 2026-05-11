@@ -1,5 +1,7 @@
 package com.stockyard.gateway.routing
 
+import io.ktor.server.application.call
+
 import kotlinx.serialization.Serializable
 
 /** Public DTO. См. 05-communication.md §5.3.2 и TASK-006 §3.1. */

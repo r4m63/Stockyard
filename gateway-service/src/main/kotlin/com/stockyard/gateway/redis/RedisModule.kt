@@ -2,6 +2,7 @@ package com.stockyard.gateway.redis
 
 import io.lettuce.core.ClientOptions
 import io.lettuce.core.RedisClient
+import io.lettuce.core.RedisConnectionStateListener
 import io.lettuce.core.RedisURI
 import io.lettuce.core.SocketOptions
 import io.lettuce.core.TimeoutOptions
@@ -59,7 +60,7 @@ class RedisModule(cfg: RedisConfig) : AutoCloseable {
             minIdle = 4
             testOnBorrow = false                 // полагаемся на autoReconnect Lettuce
             blockWhenExhausted = true
-            maxWait = Duration.ofMillis(500)
+            setMaxWait(Duration.ofMillis(500))
         }
         commandPool = ConnectionPoolSupport.createGenericObjectPool({ client.connect() }, poolConfig)
         pubSubConn = client.connectPubSub()
@@ -87,6 +88,17 @@ class RedisModule(cfg: RedisConfig) : AutoCloseable {
 
     /** Pub/Sub-connection вне пула. См. 12-storage-operations §12.2.3. */
     fun pubSubConnection(): StatefulRedisPubSubConnection<String, String> = pubSubConn
+
+    /**
+     * Регистрирует listener, который Lettuce вызывает на каждое (re)connect
+     * любого соединения этого client'а. TASK-010: используется в
+     * [QuotesSubscriber] для defensive `psubscribe(channel:quotes:*)` после
+     * reconnect — Lettuce 6.x НЕ гарантирует автоматический ресабскрайб
+     * pattern-подписок (ADR-001 + TASK-010 Q5).
+     */
+    fun addConnectionStateListener(listener: RedisConnectionStateListener) {
+        client.addListener(listener)
+    }
 
     override fun close() {
         runCatching { commandPool.close() }

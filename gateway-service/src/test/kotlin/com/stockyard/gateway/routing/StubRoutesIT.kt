@@ -17,7 +17,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 
 /**
  * Проверяет, что оставшиеся stub-эндпоинты (`/v1/portfolio`, `/v1/instruments`,
- * `/v1/quotes/*`) ещё возвращают 501 NOT_IMPLEMENTED.
+ * `/v1/quotes/...`) ещё возвращают 501 NOT_IMPLEMENTED.
  *
  * `/v1/auth/{register,login,refresh}` стали реальными в TASK-005 — их IT в
  * [com.stockyard.gateway.routing.AuthRoutesIT]. `/v1/orders` (POST + GET) стали

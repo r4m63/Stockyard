@@ -13,12 +13,16 @@ import com.stockyard.gateway.routing.instrumentsRoutes
 import com.stockyard.gateway.routing.ordersRoutes
 import com.stockyard.gateway.routing.portfolioRoutes
 import com.stockyard.gateway.routing.quotesRoutes
+import com.stockyard.gateway.ws.QuotesSubscriber
 import com.stockyard.gateway.ws.WsHub
+import com.stockyard.gateway.ws.WsMetrics
 import com.stockyard.gateway.ws.wsRoutes
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.netty.EngineMain
 import io.ktor.server.routing.routing
+import io.ktor.websocket.CloseReason
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger("Application")
@@ -47,15 +51,20 @@ fun Application.module() {
     val jwtVerifiers = JwtVerifiers(config.jwt)
     val sessionStore = SessionStore(redis)
     val authService = AuthService(coreClient, jwtVerifiers, sessionStore, config.jwt)
-    val wsHub = WsHub()
+    val wsMetrics = WsMetrics()
+    val wsHub = WsHub(wsMetrics)
+    val quotesSubscriber = QuotesSubscriber(redis, wsHub, wsMetrics)
 
-    monitor.subscribe(ApplicationStopping) {
-        log.info("Shutdown: closing Redis and Core client connections")
+    environment.monitor.subscribe(ApplicationStopping) {
+        log.info("Shutdown: draining WS, stopping Pub/Sub, closing Redis and Core")
+        runCatching { runBlocking { wsHub.closeAll(CloseReason.Codes.GOING_AWAY.code) } }
+        runCatching { quotesSubscriber.stop() }
         runCatching { redis.close() }
         runCatching { coreClient.close() }
     }
 
     installPlugins(jwtVerifiers)
+    quotesSubscriber.start()
 
     routing {
         healthRoutes(redis, coreClient)
@@ -64,6 +73,6 @@ fun Application.module() {
         portfolioRoutes(coreClient)
         instrumentsRoutes(coreClient)
         quotesRoutes(coreClient)
-        wsRoutes(wsHub)
+        wsRoutes(wsHub, jwtVerifiers, sessionStore, wsMetrics, redis)
     }
 }

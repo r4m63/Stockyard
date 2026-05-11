@@ -1,5 +1,7 @@
 package com.stockyard.gateway.routing
 
+import io.ktor.server.application.call
+
 import com.stockyard.gateway.auth.InstrumentNotFoundException
 import com.stockyard.gateway.auth.InvalidIntervalException
 import com.stockyard.gateway.auth.InvalidTimeRangeException
