@@ -1,0 +1,56 @@
+# Stockyard driver dev VM, for Apple Silicon (and any host where
+# kernel modules cannot be built natively).
+#
+# Quick start (from project root):
+#   brew install lima
+#   limactl start --name=stockyard-dev driver/lima.yaml
+#   limactl shell stockyard-dev
+#   cd /Users/$USER/Projects/Stockyard/driver
+#   make
+#   sudo ./scripts/load.sh
+#   ./test/test_read 5
+#
+# The VM matches the host architecture: on Apple Silicon you get an
+# ARM64 Ubuntu 22.04 LTS guest with kernel 5.15.  The driver code is
+# arch-neutral C, so the resulting .ko is loadable in that kernel
+# without changes.
+
+# Use the host's CPU arch (aarch64 on Apple Silicon, x86_64 on Intel).
+arch: "default"
+
+# Ubuntu 22.04 LTS — known-good kernel-headers and build chain.
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+  - location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+
+cpus: 2
+memory: "2GiB"
+disk: "10GiB"
+
+# Mount the whole repo writable so `make` and edits live in the same place.
+mounts:
+  - location: "~/Projects/Stockyard"
+    writable: true
+
+# Install build prerequisites on first boot.
+provision:
+  - mode: system
+    script: |
+      #!/usr/bin/env bash
+      set -eux
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y --no-install-recommends \
+        build-essential \
+        linux-headers-$(uname -r) \
+        kmod \
+        make
+      # Make /dev/stockyard accessible without sudo after load.sh runs.
+      groupadd --system stockyard 2>/dev/null || true
+      usermod -aG stockyard "${LIMA_USER:-ubuntu}" || true
+
+# Drop the user straight into the project on `limactl shell`.
+env:
+  STOCKYARD_HOME: "/Users/{{.User}}/Projects/Stockyard/driver"

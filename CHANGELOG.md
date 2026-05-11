@@ -19,6 +19,7 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+- C Linux kernel module `/dev/stockyard` — имитатор биржи, выдаёт packed 44-байтовые `struct stockyard_tick` через character device по конфигурируемому таймеру (1..1000 Hz). Конфигурация runtime через 4 ioctl: `SET_TICKERS` (до 64 тикеров с initial-cents + volatility-bps), `SET_RATE_HZ`, `GET_STATS`, `RESET`. Драйвер уважает `O_NONBLOCK`/`poll`/`select`, реализует drop-oldest на overflow kfifo (8192 тиков), пишет статистику. Userspace harness (`test_read`/`test_ioctl`/`test_layout`/`test_errors`) + seed на 50 MOEX-тикеров + Apple Silicon Lima VM конфиг + загрузочные скрипты. Foundation для TASK-009 Quotes Service. (TASK-008)
 
 ### Changed
 

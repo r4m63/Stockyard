@@ -1,0 +1,64 @@
+# Stockyard seed: 50 MOEX tickers + initial prices in cents + volatility (bps).
+# Source: docs/architecture/seed/instruments-50.md.
+#
+# Format: <TICKER> <PRICE_CENTS> <VOLATILITY_BPS>
+#   TICKER     up to 8 chars, ASCII
+#   PRICE      integer kopecks (cents).  280.00 руб → 28000
+#   VOL_BPS    basis points per tick step, 1..1000 (100 = 1.00 %)
+#
+# Loaded into the driver by: ./test/test_ioctl load seed/tickers.txt
+# That issues STOCKYARD_IOC_SET_TICKERS to /dev/stockyard.
+
+# ----- Top-30 MOEX index -----
+SBER      28500   100
+GAZP      16500   100
+LKOH     670000   100
+GMKN    1450000   100
+ROSN      45000   100
+NVTK    140000    100
+MGNT     520000   100
+MTSS      27000   100
+YNDX     280000   100
+OZON     270000   100
+VKCO      48000   150
+PLZL    1200000   100
+AFKS       1800   150
+AFLT       6000   150
+ALRS       7200   100
+CHMF    150000    100
+FEES         28    200
+HYDR        100    150
+IRAO        450   150
+MOEX      19000   100
+NLMK      18000   100
+PHOR    680000    100
+POLY      45000   150
+RTKM       8500   100
+RUAL       4500   150
+SNGS       3000   100
+TATN     58000    100
+TCSG    310000    100
+TRMK      19000   150
+VTBR         12   200
+
+# ----- Liquid second tier -----
+PIKK     78000    100
+SBERP    27200    100
+SNGSP     5500    100
+TATNP    57500    100
+RASP      30000   150
+UPRO       2400   150
+LSRG     65000    150
+MAGN      6200   100
+SMLT    400000    150
+SGZH       7500    200
+FIVE    260000    100
+AGRO     150000   150
+FLOT     110000    150
+GLTR     750000    150
+CBOM        700    150
+ENPG     520000    150
+MTLR      16000    200
+MTLRP     14500    200
+NMTP       1200    150
+BSPB     34000     100
