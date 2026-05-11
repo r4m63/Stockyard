@@ -210,6 +210,55 @@ services:
       start_period: 60s    # Flyway-миграция на cold start
 
   # ---------------------------------------------------------------------------
+  # Quotes Service (Go) — единственный writer quotes:* / channel:quotes:* /
+  # stream:quotes / quotes_ticks (CH).  Читает биржу из /dev/stockyard,
+  # который собран и зарегистрирован хост-скриптом deploy/scripts/load_driver.sh
+  # (см. ADR-015 — driver loading вне контейнера).
+  # docs/architecture/03-components.md §3.3, .claude/tasks/TASK-009-*
+  # ---------------------------------------------------------------------------
+  quotes-service:
+    build:
+      context: ./quotes-service
+      dockerfile: Dockerfile
+    container_name: stockyard-quotes-service
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:       { cpus: '1.0', memory: 512M }
+        reservations: { cpus: '0.5', memory: 256M }
+    environment:
+      STOCKYARD_DRIVER_PATH: /dev/stockyard
+      STOCKYARD_REDIS_ADDR: redis:6379
+      STOCKYARD_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      STOCKYARD_CH_DSN: "clickhouse://${CH_USER}:${CH_PASSWORD}@clickhouse:9000/stockyard"
+      STOCKYARD_HEALTH_PORT: "8080"
+      STOCKYARD_CH_BATCH_SIZE: "1000"
+      STOCKYARD_CH_BATCH_MS: "1000"
+      STOCKYARD_SERVICE_NAME: quotes-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: quotes-service
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-dev}
+    # /dev/stockyard должен существовать на хосте до compose up — иначе bind
+    # mount упадёт. См. deploy/scripts/load_driver.sh.
+    devices:
+      - "/dev/stockyard:/dev/stockyard"
+    ports:
+      - "8082:8080"
+    networks: [stockyard]
+    depends_on:
+      redis:      { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+    healthcheck:
+      # distroless/static — нет shell/curl, поэтому в Dockerfile собран
+      # вспомогательный бинарь /healthcheck, который дёргает /healthz по
+      # 127.0.0.1:8080 и выходит 0/1.
+      test: ["CMD", "/healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
   # API Gateway (Kotlin/Ktor) — единая публичная точка входа.
   # docs/architecture/03-components.md §3.1, .claude/tasks/TASK-003-*
   # ---------------------------------------------------------------------------
