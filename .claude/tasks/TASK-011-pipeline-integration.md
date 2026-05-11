@@ -3,9 +3,9 @@
 ## Meta
 - ID: TASK-011
 - Created: 2026-05-11T18:00:00Z
-- Last updated: 2026-05-11T21:15:00Z
-- Stage: reviewed
-- Touched roles: architect, backend, tester, reviewer
+- Last updated: 2026-05-11T21:30:00Z
+- Stage: pushed
+- Touched roles: architect, backend, tester, reviewer, committer
 
 ## Original Request
 TASK-008 — quotes pipeline (Driver + Quotes Service + WS), декомпозиция на 4 подзадачи. Эта подзадача — финальная интеграция всех 3 компонентов в docker-compose, e2e smoke, выпиливание `DevPriceFixture`.
@@ -377,3 +377,4 @@ Original gate **NEEDS_WORK** with 0 critical / 1 high (H1 smoke auth) / 2 medium
   - **Low findings L1, L2, L4, L5 — accepted as-is**: L1 (gateway depends_on cold-start race) — pre-existing, отдельный chore. L2 (GNU `stat -c` warning comment) — учебный проект, всё ещё Linux-only; не приоритет. L4 (WsRoutesIT comment rot) — group into F3 KDoc cleanup chore. L5 (`build/resources/main/application.conf` build-artifact) — уже корректно gitignored, не commit hazard.
   - Suggested next: `/reviewer TASK-011` — re-review только трёх изменённых файлов (`smoke_quotes.sh`, §5.3.2 docs, `InstrumentRepository.kt`), ожидание PASS.
 - 2026-05-11T21:15:00Z: /reviewer (re-review) — gate PASS. H1 closed: smoke now hits `core-service:8081 /internal/quotes/{ticker}` (no auth wrapper in `QuotesApi.kt`, port exposed in compose). M1 closed: §5.3.2 REST examples in cents + `Authorization: Bearer <JWT>` line, schemas match gateway `QuoteResponse`/`CandleDto` exactly. M2 closed: `listTickers()` deleted, zero callers confirmed, no orphan imports. L3 closed by curl diagnostic upgrade. L1/L2/L4/L5 remain accepted-deferred. No new defects introduced. Suggested next: `/committer TASK-011` + `/committer release auto` → v0.7.0.
+- 2026-05-11T21:30:00Z: /committer — branch `feature/11-pipeline-integration` created off `main`, 9 atomic commits (97b54cf feat(deploy) compose · 31c5b70 feat(quotes) healthcheck · 1c3e413 feat(deploy) scripts · d8c05b2 refactor(core) retire DevPriceFixture · 1b7be35 docs(arch) §5.3.2/§5.3.3/§5.5.2/§12.2.0 · d72a3ee docs(adr) ADR-015 · 93e8a15 build(gateway,core) gradle wrapper [TASK-012] · e75dd9d docs(task) ledgers · d072d17 docs(changelog)). Pushed to `origin/feature/11-pipeline-integration`. PR #9 opened against `main`, assignee `r4m63` (ramil), title `feat(deploy): wire quotes-service into compose, retire DevPriceFixture, add Gradle wrapper`. URL: https://github.com/r4m63/Stockyard/pull/9.

@@ -3,9 +3,9 @@
 ## Meta
 - ID: TASK-012
 - Created: 2026-05-11T19:30:00Z
-- Last updated: 2026-05-11T20:05:00Z
-- Stage: backend-done
-- Touched roles: architect, backend
+- Last updated: 2026-05-11T21:30:00Z
+- Stage: pushed
+- Touched roles: architect, backend, committer
 
 ## Original Request
 Chore из TASK-011 follow-up. `gradlew` отсутствует и в `gateway-service/`, и в
@@ -122,3 +122,4 @@ POM `clickhouse-jdbc-0.7.0.pom` ссылается на `clickhouse-http-client:
 ## Handoff Log
 - 2026-05-11T19:30:00Z: создан как chore follow-up TASK-011 backend; suggested next: `/backend TASK-012`.
 - 2026-05-11T20:05:00Z: /backend — wrapper 8.10.2 положен в оба сервиса + Dockerfile'ы переключены на `./gradlew`. Gateway compile OK. Core compile падает на pre-existing clickhouse-jdbc:0.7.0 deps (F1) — вынесено как отдельный кандидат на chore. Wrapper сам по себе работает корректно. Suggested next: `/tester TASK-012` (smoke `./gradlew test` на gateway — должен пройти; core пропустить до фикса F1).
+- 2026-05-11T21:30:00Z: /committer — wrapper-добавление сшито в commit `93e8a15 build(gateway,core): add Gradle 8.10.2 wrapper to Kotlin services` на ветке `feature/11-pipeline-integration` вместе с TASK-011 финализацией. Ledger TASK-012 закоммичен в `e75dd9d docs(task): record TASK-011 and TASK-012 ledger entries`. CHANGELOG `[Unreleased]` пополнен через `d072d17 docs(changelog): …`. Push в `origin/feature/11-pipeline-integration`. Включено в PR #9 → `main` (assignee r4m63). Tester для TASK-012 как отдельный шаг не запускался: gateway `./gradlew compileKotlin` уже verified in commit message; core compile блокируется pre-existing `clickhouse-jdbc:0.7.0` upstream bug (out-of-scope).
