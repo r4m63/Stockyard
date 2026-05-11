@@ -9,14 +9,13 @@ import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.jwt.jwt
-import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.plugins.callloging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.request.path
 import io.ktor.server.websocket.WebSockets
 import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
-import java.time.Duration
 
 fun Application.installPlugins(verifiers: JwtVerifiers) {
     // StatusPages должен быть установлен ПЕРВЫМ, чтобы перехватить ошибки от
@@ -53,8 +52,8 @@ fun Application.installPlugins(verifiers: JwtVerifiers) {
     }
 
     install(WebSockets) {
-        pingPeriod = Duration.ofSeconds(30)
-        timeout = Duration.ofSeconds(60)
+        pingPeriodMillis = 30_000
+        timeoutMillis = 60_000
     }
 
     install(Authentication) {

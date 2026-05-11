@@ -49,7 +49,7 @@ fun Application.module() {
     val authService = AuthService(coreClient, jwtVerifiers, sessionStore, config.jwt)
     val wsHub = WsHub()
 
-    monitor.subscribe(ApplicationStopping) {
+    environment.monitor.subscribe(ApplicationStopping) {
         log.info("Shutdown: closing Redis and Core client connections")
         runCatching { redis.close() }
         runCatching { coreClient.close() }
