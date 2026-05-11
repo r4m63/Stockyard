@@ -19,8 +19,6 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
-- C Linux kernel module `/dev/stockyard` — имитатор биржи, выдаёт packed 44-байтовые `struct stockyard_tick` через character device по конфигурируемому таймеру (1..1000 Hz). Конфигурация runtime через 4 ioctl: `SET_TICKERS` (до 64 тикеров с initial-cents + volatility-bps), `SET_RATE_HZ`, `GET_STATS`, `RESET`. Драйвер уважает `O_NONBLOCK`/`poll`/`select`, реализует drop-oldest на overflow kfifo (8192 тиков), пишет статистику. Userspace harness (`test_read`/`test_ioctl`/`test_layout`/`test_errors`) + seed на 50 MOEX-тикеров + Apple Silicon Lima VM конфиг + загрузочные скрипты. Foundation для TASK-009 Quotes Service. (TASK-008)
-- **Quotes Service** (Go) — новый микросервис из ТЗ §2 п.6: читает packed-binary tick stream из `/dev/stockyard`, фанит в Redis (`HSET quotes:{ticker}` + `PUBLISH channel:quotes:{ticker}` атомарно через TxPipeline + `XADD stream:quotes` MAXLEN ~100k) и батчит в ClickHouse `quotes_ticks` (1000 ticks OR 1s, 3× retry с backoff). JSON payload в Redis Pub/Sub — integer cents (`bidCents`/`askCents`/`lastCents`/`volume`) + ISO-8601 `ts` + `tsNs` uint64 по ADR-011. Asymmetric backpressure (Redis drop-on-full, CH blocking) per ADR-001. Health endpoints `/healthz`/`/readyz`/`/metrics` на порту 8080. Восемь Prometheus counters: `stockyard_quotes_ticks_total`, `_ticks_dropped_redis_total`, `_ticks_dropped_ch_total`, `_redis_publish_errors_total`, `_ch_batch_errors_total`, `_ch_rows_inserted_total`, `_ch_rows_dropped_total`, `_driver_reopens_total`. Docker image: multi-stage distroless nonroot. (TASK-009)
 
 ### Changed
 
@@ -31,6 +29,14 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ### Fixed
 
 ### Security
+
+---
+
+## [0.7.0] - 2026-05-12
+
+### Added
+- C Linux kernel module `/dev/stockyard` — имитатор биржи, выдаёт packed 44-байтовые `struct stockyard_tick` через character device по конфигурируемому таймеру (1..1000 Hz). Конфигурация runtime через 4 ioctl: `SET_TICKERS` (до 64 тикеров с initial-cents + volatility-bps), `SET_RATE_HZ`, `GET_STATS`, `RESET`. Драйвер уважает `O_NONBLOCK`/`poll`/`select`, реализует drop-oldest на overflow kfifo (8192 тиков), пишет статистику. Userspace harness (`test_read`/`test_ioctl`/`test_layout`/`test_errors`) + seed на 50 MOEX-тикеров + Apple Silicon Lima VM конфиг + загрузочные скрипты. Foundation для TASK-009 Quotes Service. (TASK-008)
+- **Quotes Service** (Go) — новый микросервис из ТЗ §2 п.6: читает packed-binary tick stream из `/dev/stockyard`, фанит в Redis (`HSET quotes:{ticker}` + `PUBLISH channel:quotes:{ticker}` атомарно через TxPipeline + `XADD stream:quotes` MAXLEN ~100k) и батчит в ClickHouse `quotes_ticks` (1000 ticks OR 1s, 3× retry с backoff). JSON payload в Redis Pub/Sub — integer cents (`bidCents`/`askCents`/`lastCents`/`volume`) + ISO-8601 `ts` + `tsNs` uint64 по ADR-011. Asymmetric backpressure (Redis drop-on-full, CH blocking) per ADR-001. Health endpoints `/healthz`/`/readyz`/`/metrics` на порту 8080. Восемь Prometheus counters: `stockyard_quotes_ticks_total`, `_ticks_dropped_redis_total`, `_ticks_dropped_ch_total`, `_redis_publish_errors_total`, `_ch_batch_errors_total`, `_ch_rows_inserted_total`, `_ch_rows_dropped_total`, `_driver_reopens_total`. Docker image: multi-stage distroless nonroot. (TASK-009)
 
 ---
 
@@ -150,7 +156,8 @@ Compare links — обновляются автоматически /committer r
 Замени <org>/<repo> на реальный путь после публикации репозитория.
 -->
 
-[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/r4m63/Stockyard/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/r4m63/Stockyard/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/r4m63/Stockyard/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/r4m63/Stockyard/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/r4m63/Stockyard/compare/v0.3.0...v0.4.0
