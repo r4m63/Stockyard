@@ -1,5 +1,7 @@
 package com.stockyard.gateway.routing
 
+import io.ktor.server.application.call
+
 import com.stockyard.gateway.auth.IdempotencyConflictException
 import com.stockyard.gateway.auth.InsufficientFundsException
 import com.stockyard.gateway.auth.InsufficientPositionException
