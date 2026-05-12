@@ -4,14 +4,17 @@
 #     .claude/tasks/TASK-003-gateway-scaffold.md (план реализации).
 
 # ---------------------------------------------------------------------------
-# Stage 1 — build fat jar через Ktor Gradle plugin
+# Stage 1 — build fat jar через wrapper (Gradle 8.10.2, см. TASK-012).
+# Базовый JDK-only образ; gradle качается wrapper'ом из репо для
+# reproducible сборки (версия пинится в gradle/wrapper/gradle-wrapper.properties).
 # ---------------------------------------------------------------------------
-FROM gradle:8.10-jdk21-alpine AS build
+FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /app
-COPY settings.gradle.kts build.gradle.kts gradle.properties ./
+COPY gradlew ./
 COPY gradle/ ./gradle/
+COPY settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY src/ ./src/
-RUN gradle buildFatJar --no-daemon
+RUN ./gradlew buildFatJar --no-daemon
 
 # ---------------------------------------------------------------------------
 # Stage 2 — runtime, JRE-alpine + OTel Java Agent

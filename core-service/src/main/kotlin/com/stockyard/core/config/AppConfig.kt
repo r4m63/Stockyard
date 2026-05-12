@@ -8,14 +8,6 @@ data class AppConfig(
     val clickhouse: ClickHouseConfig,
     val argon2: Argon2Config,
     val otel: OtelConfig,
-    val devFixture: DevFixtureConfig,
-)
-
-/** TODO(TASK-008): удалить вместе с DevPriceFixture после реализации Quotes Service. */
-data class DevFixtureConfig(
-    val enabled: Boolean,
-    val intervalSec: Long,
-    val jitterPercent: Double,
 )
 
 data class PostgresConfig(
@@ -59,7 +51,6 @@ fun Application.loadAppConfig(): AppConfig {
     val ch = cfg.config("clickhouse")
     val argon = cfg.config("argon2")
     val otel = cfg.config("otel")
-    val devFixture = runCatching { cfg.config("devFixture") }.getOrNull()
     return AppConfig(
         postgres = PostgresConfig(
             host = pg.property("host").getString(),
@@ -85,11 +76,6 @@ fun Application.loadAppConfig(): AppConfig {
         otel = OtelConfig(
             serviceName = otel.property("serviceName").getString(),
             otlpEndpoint = otel.property("otlpEndpoint").getString(),
-        ),
-        devFixture = DevFixtureConfig(
-            enabled = devFixture?.property("enabled")?.getString()?.toBoolean() ?: true,
-            intervalSec = devFixture?.property("intervalSec")?.getString()?.toLong() ?: 5L,
-            jitterPercent = devFixture?.property("jitterPercent")?.getString()?.toDouble() ?: 0.5,
         ),
     )
 }

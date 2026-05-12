@@ -22,7 +22,6 @@ import com.stockyard.core.persistence.DataSources
 import com.stockyard.core.persistence.FlywayBootstrap
 import com.stockyard.core.persistence.TransactionManager
 import com.stockyard.core.quotes.CandlesRepository
-import com.stockyard.core.quotes.DevPriceFixture
 import com.stockyard.core.quotes.QuotesPort
 import com.stockyard.core.redis.RedisModule
 import com.stockyard.core.routing.healthRoutes
@@ -54,7 +53,6 @@ fun Application.module() {
         .addKeyValue("service.name", config.otel.serviceName)
         .addKeyValue("pg.host", config.postgres.host)
         .addKeyValue("redis.url", config.redis.url)
-        .addKeyValue("devFixture.enabled", config.devFixture.enabled)
         .log("Bootstrapping core-service")
 
     val dataSources = DataSources(config.postgres, config.clickhouse)
@@ -88,24 +86,8 @@ fun Application.module() {
     // Flyway migration ДО открытия HTTP-сокета. Падение здесь = провал старта Ktor.
     FlywayBootstrap.migrate(dataSources.pg)
 
-    // TODO(TASK-008): удалить DevPriceFixture после реализации Quotes Service.
-    val devFixture: DevPriceFixture? = if (config.devFixture.enabled) {
-        DevPriceFixture(
-            redis = redis,
-            instrumentRepo = instrumentRepo,
-            pgDs = dataSources.pg,
-            chDs = dataSources.clickhouse,
-            intervalSec = config.devFixture.intervalSec,
-            jitterPercent = config.devFixture.jitterPercent,
-        ).also { it.start() }
-    } else {
-        log.info("DevPriceFixture disabled (production-like mode)")
-        null
-    }
-
     monitor.subscribe(ApplicationStopping) {
-        log.info("Shutdown: closing DevPriceFixture, DataSources and Redis connections")
-        runCatching { devFixture?.stop() }
+        log.info("Shutdown: closing DataSources and Redis connections")
         runCatching { dataSources.close() }
         runCatching { redis.close() }
     }
