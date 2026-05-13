@@ -56,7 +56,7 @@ class RedisModule(cfg: RedisConfig) : AutoCloseable {
             minIdle = 4
             testOnBorrow = false
             blockWhenExhausted = true
-            maxWait = Duration.ofMillis(500)
+            setMaxWait(Duration.ofMillis(500))
         }
         commandPool = ConnectionPoolSupport.createGenericObjectPool({ client.connect() }, poolConfig)
         pubSubConn = client.connectPubSub()

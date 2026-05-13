@@ -63,7 +63,7 @@ class DataSources(pgCfg: PostgresConfig, chCfg: ClickHouseConfig) : AutoCloseabl
             idleTimeout = 300_000
             maxLifetime = 1_800_000
 
-            connectionTestQuery = "SELECT 1 FORMAT TabSeparated"
+            connectionTestQuery = "SELECT 1"
 
             poolName = "core-ch"
         }
@@ -76,7 +76,7 @@ class DataSources(pgCfg: PostgresConfig, chCfg: ClickHouseConfig) : AutoCloseabl
 
     fun clickhousePing(): Boolean = runCatching {
         clickhouse.connection.use {
-            it.prepareStatement("SELECT 1 FORMAT TabSeparated").executeQuery().use { rs -> rs.next() }
+            it.prepareStatement("SELECT 1").executeQuery().use { rs -> rs.next() }
         }
     }.getOrElse { false }
 

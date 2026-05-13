@@ -23,6 +23,7 @@ object FlywayBootstrap {
             .locations("classpath:db/migration")
             .baselineOnMigrate(true)
             .validateOnMigrate(true)
+            .validateMigrationNaming(true)
             .cleanDisabled(true)
             .outOfOrder(false)
             .load()
@@ -31,8 +32,8 @@ object FlywayBootstrap {
 
         log.atInfo()
             .addKeyValue("migrations.applied", result.migrationsExecuted)
-            .addKeyValue("schema.version", result.targetSchemaVersion?.version ?: "(none)")
-            .addKeyValue("initial.schema.version", result.initialSchemaVersion?.version ?: "(empty)")
+            .addKeyValue("schema.version", result.targetSchemaVersion?.toString() ?: "(none)")
+            .addKeyValue("initial.schema.version", result.initialSchemaVersion?.toString() ?: "(empty)")
             .log("Flyway migration complete")
     }
 }

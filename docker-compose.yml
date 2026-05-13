@@ -137,7 +137,7 @@ services:
       - "9363:9363"   # Prometheus /metrics
     networks: [stockyard]
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -193,6 +193,7 @@ services:
       CH_USER: ${CH_USER}
       CH_PASSWORD: ${CH_PASSWORD}
       ARGON2_PEPPER: ${ARGON2_PEPPER}
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: core-service
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-dev}
@@ -217,6 +218,7 @@ services:
   # docs/architecture/03-components.md §3.3, .claude/tasks/TASK-009-*
   # ---------------------------------------------------------------------------
   quotes-service:
+    profiles: ["quotes"]
     build:
       context: ./quotes-service
       dockerfile: Dockerfile
@@ -235,6 +237,7 @@ services:
       STOCKYARD_CH_BATCH_SIZE: "1000"
       STOCKYARD_CH_BATCH_MS: "1000"
       STOCKYARD_SERVICE_NAME: quotes-service
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: quotes-service
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-dev}
@@ -278,6 +281,7 @@ services:
       REDIS_URL: redis://redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       CORE_SERVICE_URL: http://core-service:8080
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: gateway-service
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-dev}

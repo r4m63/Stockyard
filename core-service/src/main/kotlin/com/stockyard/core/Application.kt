@@ -86,7 +86,7 @@ fun Application.module() {
     // Flyway migration ДО открытия HTTP-сокета. Падение здесь = провал старта Ktor.
     FlywayBootstrap.migrate(dataSources.pg)
 
-    monitor.subscribe(ApplicationStopping) {
+    environment.monitor.subscribe(ApplicationStopping) {
         log.info("Shutdown: closing DataSources and Redis connections")
         runCatching { dataSources.close() }
         runCatching { redis.close() }
