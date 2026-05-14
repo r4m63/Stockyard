@@ -8,6 +8,15 @@ data class AppConfig(
     val clickhouse: ClickHouseConfig,
     val argon2: Argon2Config,
     val otel: OtelConfig,
+    val quotesSource: QuotesSource,
+    val devFixture: DevFixtureConfig,
+)
+
+enum class QuotesSource { FIXTURE, DRIVER }
+
+data class DevFixtureConfig(
+    val intervalSec: Long,
+    val jitterPercent: Double,
 )
 
 data class PostgresConfig(
@@ -51,6 +60,13 @@ fun Application.loadAppConfig(): AppConfig {
     val ch = cfg.config("clickhouse")
     val argon = cfg.config("argon2")
     val otel = cfg.config("otel")
+    val fixture = cfg.config("devFixture")
+    val quotesSourceRaw = cfg.property("quotesSource").getString().trim().lowercase()
+    val quotesSource = when (quotesSourceRaw) {
+        "fixture" -> QuotesSource.FIXTURE
+        "driver" -> QuotesSource.DRIVER
+        else -> error("Unknown stockyard.quotesSource='$quotesSourceRaw' (expected 'fixture' or 'driver')")
+    }
     return AppConfig(
         postgres = PostgresConfig(
             host = pg.property("host").getString(),
@@ -76,6 +92,11 @@ fun Application.loadAppConfig(): AppConfig {
         otel = OtelConfig(
             serviceName = otel.property("serviceName").getString(),
             otlpEndpoint = otel.property("otlpEndpoint").getString(),
+        ),
+        quotesSource = quotesSource,
+        devFixture = DevFixtureConfig(
+            intervalSec = fixture.property("intervalSec").getString().toLong(),
+            jitterPercent = fixture.property("jitterPercent").getString().toDouble(),
         ),
     )
 }
