@@ -2,6 +2,8 @@ package com.stockyard.gateway.config
 
 import com.stockyard.gateway.auth.JwtVerifiers
 import com.stockyard.gateway.error.installErrorMapping
+import com.stockyard.gateway.plugins.RateLimitPlugin
+import com.stockyard.gateway.redis.RedisModule
 import io.ktor.http.HttpMethod
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -19,7 +21,7 @@ import io.ktor.server.websocket.WebSockets
 import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
 
-fun Application.installPlugins(verifiers: JwtVerifiers) {
+fun Application.installPlugins(verifiers: JwtVerifiers, redis: RedisModule) {
     // StatusPages должен быть установлен ПЕРВЫМ, чтобы перехватить ошибки от
     // последующих плагинов (включая 401 от Authentication) и привести их
     // к единому формату {"error":{"code","message","details"}}.
@@ -66,6 +68,12 @@ fun Application.installPlugins(verifiers: JwtVerifiers) {
         pingPeriodMillis = 30_000
         timeoutMillis = 60_000
         maxFrameSize = 64L * 1024
+    }
+
+    install(RateLimitPlugin) {
+        this.redis = redis
+        perIpLimit = System.getenv("RATELIMIT_PER_IP")?.toIntOrNull() ?: 50
+        windowSec = 1
     }
 
     install(Authentication) {
