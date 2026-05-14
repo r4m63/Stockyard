@@ -205,6 +205,7 @@ services:
   # docs/architecture/03-components.md §3.2, .claude/tasks/TASK-004-*
   # ---------------------------------------------------------------------------
   core-service:
+    profiles: ["app"]
     build:
       context: ./core-service
       dockerfile: Dockerfile
@@ -305,6 +306,7 @@ services:
   # docs/architecture/03-components.md §3.1, .claude/tasks/TASK-003-*
   # ---------------------------------------------------------------------------
   gateway:
+    profiles: ["app"]
     build:
       context: ./gateway-service
       dockerfile: Dockerfile
