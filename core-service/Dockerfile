@@ -18,8 +18,12 @@ RUN ./gradlew buildFatJar --no-daemon
 # ---------------------------------------------------------------------------
 # Stage 2 — runtime, JRE-alpine + OTel Java Agent
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:21-jre-alpine
-RUN apk add --no-cache curl
+FROM eclipse-temurin:21-jre
+# Use glibc-based runtime: argon2-jvm pulls a native shared library through JNA
+# that is linked against glibc. Alpine (musl) + gcompat shim segfaults the JVM
+# on ARM64; debian is the path of least friction. Image is ~250 MB vs ~80 MB
+# alpine — acceptable trade-off for course MVP.
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
