@@ -4,6 +4,7 @@ import com.stockyard.core.api.instrumentApi
 import com.stockyard.core.api.orderApi
 import com.stockyard.core.api.portfolioApi
 import com.stockyard.core.api.quotesApi
+import com.stockyard.core.api.transactionsApi
 import com.stockyard.core.api.userApi
 import com.stockyard.core.auth.PasswordHasher
 import com.stockyard.core.config.QuotesSource
@@ -17,6 +18,7 @@ import com.stockyard.core.domain.portfolio.PortfolioService
 import com.stockyard.core.domain.position.PositionRepository
 import com.stockyard.core.domain.quotes.QuotesService
 import com.stockyard.core.domain.transaction.TransactionRepository
+import com.stockyard.core.domain.transaction.TransactionsService
 import com.stockyard.core.domain.user.UserRepository
 import com.stockyard.core.domain.user.UserService
 import com.stockyard.core.persistence.DataSources
@@ -84,6 +86,7 @@ fun Application.module() {
     )
     val portfolioService = PortfolioService(dataSources, accountRepo, positionRepo, quotesPort)
     val quotesService = QuotesService(dataSources, instrumentRepo, quotesPort, candlesRepo)
+    val transactionsService = TransactionsService(txManager, accountRepo, transactionRepo)
 
     // Flyway migration ДО открытия HTTP-сокета. Падение здесь = провал старта Ktor.
     FlywayBootstrap.migrate(dataSources.pg)
@@ -118,5 +121,6 @@ fun Application.module() {
         portfolioApi(portfolioService)
         instrumentApi(quotesService)
         quotesApi(quotesService)
+        transactionsApi(transactionsService)
     }
 }
