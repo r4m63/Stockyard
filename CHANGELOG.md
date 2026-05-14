@@ -19,6 +19,8 @@ and the project adheres to [Semantic Versioning 2.0](https://semver.org/spec/v2.
 ## [Unreleased]
 
 ### Added
+- **`GET /health/startup`** на gateway и core — отдельный probe для k8s startupProbe. Gateway: 200 iff Redis + `QuotesSubscriber.psubscribe(channel:quotes:*)` готов; core: 200 iff PG + Redis. До этого момента — 503 (даёт init-контейнерам грейс-период). (TASK-015)
+- **Per-IP rate limit на gateway** (Ktor `RateLimitPlugin`, ADR-012): sliding-counter через Redis `INCR + EXPIRE` на ключах `ratelimit:ip:{ip}:{epochSec}`, default 50 rps/IP (override `RATELIMIT_PER_IP`). Skip `/health`, `/metrics`, `/v1/ws`. Заголовки `RateLimit-Limit / Remaining / Reset` (IETF draft). При превышении 429 `{error:{code:"RATE_LIMITED"}}` + `Retry-After`. Fail-open при недоступности Redis (с WARN в логи). (TASK-015)
 - **`POST /v1/accounts/deposit`** — JWT-gated пополнение счёта пользователя. Тело `{amountCents, currency}`, обязателен заголовок `Idempotency-Key` (ADR-005-pattern). Возвращает 201 `{transactionId, balanceCents, currency}`. 422 `INVALID_AMOUNT` при `amountCents <= 0`. Атомарная транзакция в core: replay-short-circuit ДО `FOR UPDATE` на счёте, SQLState 23505 fallback при race. (TASK-014)
 - **`GET /v1/transactions?limit=&cursor=`** — JWT-gated история всех денежных движений пользователя (DEPOSIT/BUY/SELL audit). Keyset-курсор `base64(epochSec.nano:id)` по `(created_at DESC, id DESC)`. (TASK-014)
 - Migration V8: `idempotency_key TEXT` на `transactions` + partial UNIQUE `(user_id, type, idempotency_key) WHERE idempotency_key IS NOT NULL`. Mirror ADR-005 для deposit; type-scoped key namespace во избежание коллизий с order keys. (TASK-014)
