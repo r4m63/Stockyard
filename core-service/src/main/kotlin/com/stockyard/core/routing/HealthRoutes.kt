@@ -3,10 +3,11 @@ package com.stockyard.core.routing
 import com.stockyard.core.persistence.DataSources
 import com.stockyard.core.redis.RedisModule
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.call
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
-import io.micrometer.prometheus.PrometheusMeterRegistry
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import kotlinx.serialization.Serializable
 
 @Serializable

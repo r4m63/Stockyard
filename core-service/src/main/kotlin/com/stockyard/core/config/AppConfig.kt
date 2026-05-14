@@ -32,7 +32,7 @@ data class ClickHouseConfig(
     val user: String,
     val password: String,
 ) {
-    val jdbcUrl: String get() = "jdbc:ch://$host:$port/$db?compress=lz4&socket_timeout=10000"
+    val jdbcUrl: String get() = "jdbc:ch://$host:$port/$db?socket_timeout=10000"
 }
 
 data class Argon2Config(

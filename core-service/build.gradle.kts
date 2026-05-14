@@ -5,6 +5,10 @@ plugins {
     application
 }
 
+tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
+    mergeServiceFiles()
+}
+
 group = "com.stockyard"
 version = "0.2.0"
 
