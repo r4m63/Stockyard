@@ -98,6 +98,9 @@ class QuotesSubscriber(
     @Volatile
     private var started = false
 
+    /** True after `psubscribe channel:quotes:*` succeeded. Used by `/health/startup`. */
+    fun isStarted(): Boolean = started
+
     fun start() {
         if (started) return
         pubSub.addListener(messageListener)

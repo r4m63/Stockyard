@@ -65,11 +65,11 @@ fun Application.module() {
         runCatching { coreClient.close() }
     }
 
-    installPlugins(jwtVerifiers)
+    installPlugins(jwtVerifiers, redis)
     quotesSubscriber.start()
 
     routing {
-        healthRoutes(redis, coreClient)
+        healthRoutes(redis, coreClient, quotesSubscriber)
         authRoutes(authService)
         ordersRoutes(coreClient)
         portfolioRoutes(coreClient)
