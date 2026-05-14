@@ -337,6 +337,31 @@ services:
       retries: 5
       start_period: 30s
 
+  # ---------------------------------------------------------------------------
+  # Load Simulator (Kotlin) — synthetic clients для нагрузочного тестирования.
+  # ТЗ §2 п.5. Подключается профилем `sim`:
+  #   docker compose --profile sim up load-simulator
+  # docs/architecture/03-components.md, .claude/tasks/TASK-016-*
+  # ---------------------------------------------------------------------------
+  load-simulator:
+    profiles: ["sim"]
+    build:
+      context: ./load-simulator
+      dockerfile: Dockerfile
+    container_name: stockyard-load-simulator
+    restart: "no"
+    environment:
+      SIM_GATEWAY_URL: ${SIM_GATEWAY_URL:-http://gateway:8080}
+      SIM_USERS: ${SIM_USERS:-100}
+      SIM_RAMP_SECONDS: ${SIM_RAMP_SECONDS:-10}
+      SIM_HOLD_SECONDS: ${SIM_HOLD_SECONDS:-60}
+      SIM_TICKERS: ${SIM_TICKERS:-SBER,GAZP,LKOH,YNDX,VTBR}
+      SIM_PRINT_SECONDS: ${SIM_PRINT_SECONDS:-5}
+    networks: [stockyard]
+    depends_on:
+      gateway:
+        condition: service_healthy
+
 # -----------------------------------------------------------------------------
 # Volumes
 # -----------------------------------------------------------------------------
