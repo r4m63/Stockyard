@@ -43,3 +43,7 @@ class InstrumentNotFoundException(val ticker: String) : RuntimeException("instru
 class InvalidIntervalException(val raw: String) : RuntimeException("invalid interval: $raw")
 
 class InvalidTimeRangeException(val reason: String) : RuntimeException("invalid time range: $reason")
+
+// ---- TASK-014: deposit ----
+
+class InvalidAmountException(val amountCents: Long) : RuntimeException("invalid amount: $amountCents")

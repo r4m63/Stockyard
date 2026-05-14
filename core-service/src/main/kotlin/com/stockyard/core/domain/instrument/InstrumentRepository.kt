@@ -15,6 +15,16 @@ class InstrumentRepository {
             ps.executeQuery().use { rs -> rs.next() }
         }
 
+    /** Только тикеры (быстрее listAll, нужен DevPriceFixture для bootstrap снапшота). */
+    fun listTickers(conn: Connection): List<String> =
+        conn.prepareStatement("SELECT ticker FROM instruments ORDER BY ticker").use { ps ->
+            ps.executeQuery().use { rs ->
+                val acc = mutableListOf<String>()
+                while (rs.next()) acc += rs.getString("ticker")
+                acc
+            }
+        }
+
     /** Полный каталог — для GET /v1/instruments. */
     fun listAll(conn: Connection): List<Instrument> =
         conn.prepareStatement(

@@ -45,6 +45,22 @@ fun Route.healthRoutes(
         call.respond(httpStatus, HealthResponse(status = if (criticalUp) "UP" else "DOWN", checks = checks))
     }
 
+    /**
+     * Startup: PG ping required (Flyway уже отработала, иначе HTTP-сокет не открыт).
+     * Redis тоже обязателен — без него фикстура/Quotes Service не работают, и `QuotesPort`
+     * на /v1/quotes падает. ClickHouse — info-only.
+     */
+    get("/health/startup") {
+        val checks = mutableMapOf<String, String>()
+        checks["postgres"] = if (ds.pgPing()) "UP" else "DOWN"
+        checks["redis"] = if (redis.ping()) "UP" else "DOWN"
+        val allUp = checks.values.all { it == "UP" }
+        call.respond(
+            if (allUp) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable,
+            HealthResponse(status = if (allUp) "UP" else "STARTING", checks = checks),
+        )
+    }
+
     /** Prometheus scrape endpoint. */
     get("/metrics") {
         call.respond(prometheusRegistry.scrape())

@@ -4,8 +4,10 @@ import com.stockyard.core.api.instrumentApi
 import com.stockyard.core.api.orderApi
 import com.stockyard.core.api.portfolioApi
 import com.stockyard.core.api.quotesApi
+import com.stockyard.core.api.transactionsApi
 import com.stockyard.core.api.userApi
 import com.stockyard.core.auth.PasswordHasher
+import com.stockyard.core.config.QuotesSource
 import com.stockyard.core.config.installPlugins
 import com.stockyard.core.config.loadAppConfig
 import com.stockyard.core.domain.account.AccountRepository
@@ -16,12 +18,14 @@ import com.stockyard.core.domain.portfolio.PortfolioService
 import com.stockyard.core.domain.position.PositionRepository
 import com.stockyard.core.domain.quotes.QuotesService
 import com.stockyard.core.domain.transaction.TransactionRepository
+import com.stockyard.core.domain.transaction.TransactionsService
 import com.stockyard.core.domain.user.UserRepository
 import com.stockyard.core.domain.user.UserService
 import com.stockyard.core.persistence.DataSources
 import com.stockyard.core.persistence.FlywayBootstrap
 import com.stockyard.core.persistence.TransactionManager
 import com.stockyard.core.quotes.CandlesRepository
+import com.stockyard.core.quotes.DevPriceFixture
 import com.stockyard.core.quotes.QuotesPort
 import com.stockyard.core.redis.RedisModule
 import com.stockyard.core.routing.healthRoutes
@@ -82,12 +86,28 @@ fun Application.module() {
     )
     val portfolioService = PortfolioService(dataSources, accountRepo, positionRepo, quotesPort)
     val quotesService = QuotesService(dataSources, instrumentRepo, quotesPort, candlesRepo)
+    val transactionsService = TransactionsService(txManager, accountRepo, transactionRepo)
 
     // Flyway migration ДО открытия HTTP-сокета. Падение здесь = провал старта Ktor.
     FlywayBootstrap.migrate(dataSources.pg)
 
+    val devFixture: DevPriceFixture? = if (config.quotesSource == QuotesSource.FIXTURE) {
+        DevPriceFixture(
+            redis = redis,
+            instrumentRepo = instrumentRepo,
+            pgDs = dataSources.pg,
+            chDs = dataSources.clickhouse,
+            intervalSec = config.devFixture.intervalSec,
+            jitterPercent = config.devFixture.jitterPercent,
+        ).also { it.start() }
+    } else {
+        log.info("quotes source = driver — Quotes Service is the single writer; DevPriceFixture disabled")
+        null
+    }
+
     environment.monitor.subscribe(ApplicationStopping) {
         log.info("Shutdown: closing DataSources and Redis connections")
+        runCatching { devFixture?.stop() }
         runCatching { dataSources.close() }
         runCatching { redis.close() }
     }
@@ -101,5 +121,6 @@ fun Application.module() {
         portfolioApi(portfolioService)
         instrumentApi(quotesService)
         quotesApi(quotesService)
+        transactionsApi(transactionsService)
     }
 }

@@ -144,6 +144,39 @@ services:
       start_period: 30s
 
   # ---------------------------------------------------------------------------
+  # OpenTelemetry Collector — единая точка приёма OTLP/gRPC от всех сервисов
+  # и форвард трейсов в Jaeger. Метрики у нас тащит Prometheus с экспортеров,
+  # OTel пайплайн — только traces для MVP.
+  # docs/architecture/09-observability.md
+  # ---------------------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.103.1
+    container_name: stockyard-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    networks: [stockyard]
+    depends_on:
+      jaeger: { condition: service_started }
+
+  # ---------------------------------------------------------------------------
+  # Jaeger all-in-one — UI и стораж трейсов в одном контейнере для dev.
+  # ---------------------------------------------------------------------------
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: stockyard-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # UI: http://localhost:16686
+    networks: [stockyard]
+
+  # ---------------------------------------------------------------------------
   # Prometheus — собирает метрики со всех exporters и сервисов.
   # docs/architecture/09-observability.md §9.7.
   # ---------------------------------------------------------------------------
@@ -172,6 +205,7 @@ services:
   # docs/architecture/03-components.md §3.2, .claude/tasks/TASK-004-*
   # ---------------------------------------------------------------------------
   core-service:
+    profiles: ["app"]
     build:
       context: ./core-service
       dockerfile: Dockerfile
@@ -197,12 +231,18 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: core-service
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-dev}
+      # ADR-010: fixture для dev (macOS без kernel module). На Linux с драйвером
+      # ставим STOCKYARD_QUOTES_SOURCE=driver и запускаем `--profile quotes`.
+      STOCKYARD_QUOTES_SOURCE: ${STOCKYARD_QUOTES_SOURCE:-fixture}
+      STOCKYARD_FIXTURE_INTERVAL_SEC: ${STOCKYARD_FIXTURE_INTERVAL_SEC:-1}
+      STOCKYARD_FIXTURE_JITTER_PCT: ${STOCKYARD_FIXTURE_JITTER_PCT:-0.4}
     ports:
       - "8081:8080"        # хосту 8081 чтобы не путать с gateway:8080
     networks: [stockyard]
     depends_on:
-      postgres: { condition: service_healthy }
-      redis:    { condition: service_healthy }
+      postgres:       { condition: service_healthy }
+      redis:          { condition: service_healthy }
+      otel-collector: { condition: service_started }
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
       interval: 10s
@@ -266,6 +306,7 @@ services:
   # docs/architecture/03-components.md §3.1, .claude/tasks/TASK-003-*
   # ---------------------------------------------------------------------------
   gateway:
+    profiles: ["app"]
     build:
       context: ./gateway-service
       dockerfile: Dockerfile
@@ -289,14 +330,39 @@ services:
       - "8080:8080"
     networks: [stockyard]
     depends_on:
-      redis:
-        condition: service_healthy
+      redis:          { condition: service_healthy }
+      otel-collector: { condition: service_started }
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Load Simulator (Kotlin) — synthetic clients для нагрузочного тестирования.
+  # ТЗ §2 п.5. Подключается профилем `sim`:
+  #   docker compose --profile sim up load-simulator
+  # docs/architecture/03-components.md, .claude/tasks/TASK-016-*
+  # ---------------------------------------------------------------------------
+  load-simulator:
+    profiles: ["sim"]
+    build:
+      context: ./load-simulator
+      dockerfile: Dockerfile
+    container_name: stockyard-load-simulator
+    restart: "no"
+    environment:
+      SIM_GATEWAY_URL: ${SIM_GATEWAY_URL:-http://gateway:8080}
+      SIM_USERS: ${SIM_USERS:-100}
+      SIM_RAMP_SECONDS: ${SIM_RAMP_SECONDS:-10}
+      SIM_HOLD_SECONDS: ${SIM_HOLD_SECONDS:-60}
+      SIM_TICKERS: ${SIM_TICKERS:-SBER,GAZP,LKOH,YNDX,VTBR}
+      SIM_PRINT_SECONDS: ${SIM_PRINT_SECONDS:-5}
+    networks: [stockyard]
+    depends_on:
+      gateway:
+        condition: service_healthy
 
 # -----------------------------------------------------------------------------
 # Volumes

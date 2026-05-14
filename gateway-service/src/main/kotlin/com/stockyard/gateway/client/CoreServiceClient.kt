@@ -220,6 +220,52 @@ class CoreServiceClient(private val cfg: CoreServiceConfig) : AutoCloseable {
         return resp.body()
     }
 
+    // ---- TASK-014: deposit + transactions ----
+
+    /**
+     * POST /internal/accounts/{userId}/deposit — пополнение счёта.
+     * Возвращает `DepositResult` с новым балансом + id записи в audit.
+     */
+    suspend fun deposit(
+        userId: String,
+        amountCents: Long,
+        currency: String,
+        idempotencyKey: String,
+    ): DepositResult {
+        val resp = http.post("${cfg.baseUrl}/internal/accounts/$userId/deposit") {
+            contentType(ContentType.Application.Json)
+            setBody(InternalDepositRequest(amountCents, currency, idempotencyKey))
+        }
+        return when (resp.status.value) {
+            201 -> {
+                val body = resp.body<InternalDepositResponse>()
+                DepositResult.Ok(body.transactionId, body.balanceCents, body.currency, body.replay)
+            }
+            422 -> {
+                val code = readErrorCode(resp.body<JsonElement>())
+                if (code == "INVALID_AMOUNT") DepositResult.InvalidAmount
+                else DepositResult.Validation(code ?: "INVALID_REQUEST", "validation failed")
+            }
+            else -> throw CoreServiceException("deposit failed: HTTP ${resp.status.value}")
+        }
+    }
+
+    /** GET /internal/users/{userId}/transactions — keyset-пагинация. */
+    suspend fun listTransactions(
+        userId: String,
+        limit: Int,
+        cursor: String?,
+    ): InternalListTransactionsResponse {
+        val resp = http.get("${cfg.baseUrl}/internal/users/$userId/transactions") {
+            parameter("limit", limit.toString())
+            if (cursor != null) parameter("cursor", cursor)
+        }
+        if (resp.status.value !in 200..299) {
+            throw CoreServiceException("listTransactions failed: HTTP ${resp.status.value}")
+        }
+        return resp.body()
+    }
+
     private fun readErrorCode(body: JsonElement): String? =
         runCatching { body.jsonObject["error"]?.jsonObject?.get("code")?.jsonPrimitive?.content }.getOrNull()
 
@@ -362,3 +408,46 @@ sealed interface HistoryResult {
     data class InvalidInterval(val raw: String) : HistoryResult
     data class InvalidRange(val reason: String) : HistoryResult
 }
+
+// ---- TASK-014: deposit / transactions ----
+
+@Serializable
+private data class InternalDepositRequest(
+    val amountCents: Long,
+    val currency: String,
+    val idempotencyKey: String,
+)
+
+@Serializable
+private data class InternalDepositResponse(
+    val transactionId: Long,
+    val balanceCents: Long,
+    val currency: String,
+    val replay: Boolean,
+)
+
+sealed interface DepositResult {
+    data class Ok(
+        val transactionId: Long,
+        val balanceCents: Long,
+        val currency: String,
+        val replay: Boolean,
+    ) : DepositResult
+    data object InvalidAmount : DepositResult
+    data class Validation(val code: String, val message: String) : DepositResult
+}
+
+@Serializable
+data class InternalTransactionDto(
+    val transactionId: Long,
+    val type: String,
+    val amountCents: Long,
+    val refOrderId: String? = null,
+    val createdAt: String,
+)
+
+@Serializable
+data class InternalListTransactionsResponse(
+    val items: List<InternalTransactionDto>,
+    val nextCursor: String? = null,
+)
