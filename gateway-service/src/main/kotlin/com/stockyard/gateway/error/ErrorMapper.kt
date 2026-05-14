@@ -5,6 +5,7 @@ import com.stockyard.gateway.auth.GatewayValidationException
 import com.stockyard.gateway.auth.IdempotencyConflictException
 import com.stockyard.gateway.auth.InstrumentNotFoundException
 import com.stockyard.gateway.auth.InsufficientFundsException
+import com.stockyard.gateway.auth.InvalidAmountException
 import com.stockyard.gateway.auth.InsufficientPositionException
 import com.stockyard.gateway.auth.InvalidCredentialsException
 import com.stockyard.gateway.auth.InvalidIntervalException
@@ -136,6 +137,12 @@ fun Application.installErrorMapping() {
             call.respond(
                 HttpStatusCode.UnprocessableEntity,
                 ApiErrorBody(ApiError("INVALID_TIME_RANGE", cause.message ?: "invalid time range")),
+            )
+        }
+        exception<InvalidAmountException> { call, cause ->
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ApiErrorBody(ApiError("INVALID_AMOUNT", cause.message ?: "invalid amount")),
             )
         }
         exception<CoreServiceException> { call, cause ->

@@ -7,12 +7,14 @@ import com.stockyard.gateway.client.CoreServiceClient
 import com.stockyard.gateway.config.installPlugins
 import com.stockyard.gateway.config.loadAppConfig
 import com.stockyard.gateway.redis.RedisModule
+import com.stockyard.gateway.routing.accountsRoutes
 import com.stockyard.gateway.routing.authRoutes
 import com.stockyard.gateway.routing.healthRoutes
 import com.stockyard.gateway.routing.instrumentsRoutes
 import com.stockyard.gateway.routing.ordersRoutes
 import com.stockyard.gateway.routing.portfolioRoutes
 import com.stockyard.gateway.routing.quotesRoutes
+import com.stockyard.gateway.routing.transactionsRoutes
 import com.stockyard.gateway.ws.QuotesSubscriber
 import com.stockyard.gateway.ws.WsHub
 import com.stockyard.gateway.ws.WsMetrics
@@ -73,6 +75,8 @@ fun Application.module() {
         portfolioRoutes(coreClient)
         instrumentsRoutes(coreClient)
         quotesRoutes(coreClient)
+        accountsRoutes(coreClient)
+        transactionsRoutes(coreClient)
         wsRoutes(wsHub, jwtVerifiers, sessionStore, wsMetrics, redis)
     }
 }
